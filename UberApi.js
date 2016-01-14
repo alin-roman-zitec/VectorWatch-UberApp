@@ -101,6 +101,38 @@ UberApi.prototype.put = function(path, data) {
     return future.promise;
 };
 
+UberApi.prototype.delete = function(path, data) {
+    var future = Promise.defer();
+
+    request.delete(this.getEndpoint(path), {
+        headers: this.getHeaders(),
+        json: true,
+        followAllRedirects: true,
+        body: data
+    }, function(err, res, body) {
+        if (err) return future.reject(err);
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+            try {
+                err = JSON.parse(body);
+            } catch (e) {
+                err = new Error('Cannot DELETE ' + path);
+            }
+            return future.reject(err);
+        }
+        try {
+            if (res.statusCode == 204) {
+                future.resolve();
+            } else {
+                future.resolve(JSON.parse(body));
+            }
+        } catch (err) {
+            future.reject(err);
+        }
+    });
+
+    return future.promise;
+};
+
 UberApi.prototype.getEndpoint = function(path, params) {
     var endpoint = (UberApi.sandbox ? 'https://sandbox-api.uber.com/' : 'https://api.uber.com/') + path.replace(/^\/+/, '');
     if (!params) {
@@ -188,6 +220,40 @@ UberApi.prototype.isAPIError = function(err, shouldHaveStatus, shouldHaveCode) {
         }
     }
     return false;
+};
+
+UberApi.prototype.estimateByLocation = function(productId, location) {
+    return this.post('/v1/requests/estimate', {
+        product_id: productId,
+        start_latitude: location.latitude,
+        start_longitude: location.longitude
+    });
+};
+
+UberApi.prototype.estimateByPlace = function(productId, placeId) {
+    return this.post('/v1/requests/estimate', {
+        product_id: productId,
+        start_place_id: placeId
+    });
+};
+
+UberApi.prototype.requestRideAtPlace = function(productId, placeId) {
+    return this.post('/v1/requests', {
+        product_id: productId,
+        start_place_id: placeId
+    });
+};
+
+UberApi.prototype.requestRideAtLocation = function(productId, location) {
+    return this.post('/v1/requests', {
+        product_id: productId,
+        start_latitude: location.latitude,
+        start_longitude: location.longitude
+    });
+};
+
+UberApi.prototype.cancelTrip = function(rideId) {
+    return this.delete('/v1/requests/rideId', {});
 };
 
 module.exports = UberApi;
