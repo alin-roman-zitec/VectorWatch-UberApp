@@ -1,0 +1,14 @@
+{
+  "name": "uber-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "run.js",
+  "dependencies": {
+    "bluebird": "^3.0.5",
+    "mysql": "^2.9.0",
+    "request": "^2.67.0",
+    "stream-dev-tools": "git://github.com/alin-roman-zitec/streams-dev-tools.git#apps"
+  },
+  "author": "alin.roman@zitec.com",
+  "license": "ISC"
+}
