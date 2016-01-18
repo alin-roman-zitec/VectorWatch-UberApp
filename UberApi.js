@@ -96,7 +96,7 @@ UberApi.prototype.put = function(path, data) {
 UberApi.prototype.delete = function(path, data) {
     var future = Promise.defer();
 
-    request.delete(this.getEndpoint(path), {
+    request.del(this.getEndpoint(path), {
         headers: this.getHeaders(),
         json: true,
         followAllRedirects: true,

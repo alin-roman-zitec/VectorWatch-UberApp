@@ -2,6 +2,9 @@ var vectorWatch = require('stream-dev-tools');
 var Promise = require('bluebird');
 var mysql = require('mysql');
 var UberApi = require('./UberApi.js');
+var GoogleApi = require('./GoogleApi.js');
+
+var googleApi = new GoogleApi(process.env.GOOGLE_API_KEY);
 
 var connection = mysql.createConnection({
     host: 'localhost',
@@ -256,7 +259,7 @@ var RemoteMethods = {
             }
 
             return uberApi.getAvailablePlaces().then(function(places) {
-                var locations = [selectOption(ChooseLocationOptions.LOCATE, 'My Location', {
+                var locations = [selectOption(ChooseLocationOptions.LOCATE, 'Locate Me', {
                     onSelect: changeToWatchface(Watchfaces.RETRIEVE_LOCATION)
                 })];
 
@@ -286,17 +289,16 @@ var RemoteMethods = {
             ];
         }
 
-        // return locationApi.getLocationName(location).then(function(locationName) {
-        var locationName = location.latitude + ',' + location.longitude;
-        return [
-            list([
-                selectOption(RetrievingLocationOptions.CONTINUE, 'Continue', {
-                    onSelect: changeToWatchface(Watchfaces.ESTIMATE)
-                })
-            ]),
-            textElement(1, locationName)
-        ];
-        // });
+        return getLocationName(location).then(function(locationName) {
+            return [
+                list([
+                    selectOption(RetrievingLocationOptions.CONTINUE, 'Continue', {
+                        onSelect: changeToWatchface(Watchfaces.ESTIMATE)
+                    })
+                ]),
+                textElement(1, locationName)
+            ];
+        });
     },
 
     // Called in Watchfaces.ESTIMATEreque
@@ -371,19 +373,20 @@ var RemoteMethods = {
 
                     return [uberApi.getTripDetails(lastTripId), uberApi.getTripReceipt(lastTripId)];
                 }).spread(function(trip, receipt) {
-                    var locationName = 'destination address';
-                    return [
-                        bitmapElement(TripElements.Searching.Icon, Resources.Empty),
-                        textElement(TripElements.Searching.Label, ''),
-                        textElement(TripElements.Trip.Title, ''),
-                        textElement(TripElements.Trip.Address, ''),
-                        textElement(TripElements.Trip.Name, ''),
-                        textElement(TripElements.Trip.Time, ''),
+                    return getLocationName(trip.destination).then(function(locationName) {
+                        return [
+                            bitmapElement(TripElements.Searching.Icon, Resources.Empty),
+                            textElement(TripElements.Searching.Label, ''),
+                            textElement(TripElements.Trip.Title, ''),
+                            textElement(TripElements.Trip.Address, ''),
+                            textElement(TripElements.Trip.Name, ''),
+                            textElement(TripElements.Trip.Time, ''),
 
-                        bitmapElement(TripElements.Receipt.Icon, Resources.Uber),
-                        textElement(TripElements.Receipt.Address, [Icons.PIN, locationName].join(' ')),
-                        textElement(TripElements.Receipt.Price, [Icons.PRICE, receipt.total_charged].join(' '))
-                    ];
+                            bitmapElement(TripElements.Receipt.Icon, Resources.Uber),
+                            textElement(TripElements.Receipt.Address, [Icons.PIN, locationName].join(' ')),
+                            textElement(TripElements.Receipt.Price, [Icons.PRICE, receipt.total_charged].join(' '))
+                        ];
+                    });
                 });
             }
 
@@ -414,21 +417,22 @@ var RemoteMethods = {
                     textElement(TripElements.Ready.Plate, trip.vehicle.license_plate)
                 ];
             } else if ('in_progress' == trip.status) {
-                var locationName = 'destination address'; // ce-i cu asta?
-                return [
-                    bitmapElement(TripElements.Searching.Icon, Resources.Empty),
-                    textElement(TripElements.Searching.Label, ''),
-                    textElement(TripElements.Ready.Title, ''),
-                    textElement(TripElements.Ready.Name, ''),
-                    textElement(TripElements.Ready.Car, ''),
-                    textElement(TripElements.Ready.Plate, ''),
-                    textElement(TripElements.Cancel, ''),
+                return getLocationName(trip.destination).then(function(locationName) {
+                    return [
+                        bitmapElement(TripElements.Searching.Icon, Resources.Empty),
+                        textElement(TripElements.Searching.Label, ''),
+                        textElement(TripElements.Ready.Title, ''),
+                        textElement(TripElements.Ready.Name, ''),
+                        textElement(TripElements.Ready.Car, ''),
+                        textElement(TripElements.Ready.Plate, ''),
+                        textElement(TripElements.Cancel, ''),
 
-                    textElement(TripElements.Trip.Title, 'ON TRIP'),
-                    textElement(TripElements.Trip.Address, [Icons.PIN, locationName].join(' ')),
-                    textElement(TripElements.Trip.Name, [Icons.PROFILE, trip.driver.name].join(' ')),
-                    textElement(TripElements.Trip.Time, [Icons.CLOCK, trip.destination.eta, 'MIN'].join(' '))
-                ];
+                        textElement(TripElements.Trip.Title, 'ON TRIP'),
+                        textElement(TripElements.Trip.Address, [Icons.PIN, locationName].join(' ')),
+                        textElement(TripElements.Trip.Name, [Icons.PROFILE, trip.driver.name].join(' ')),
+                        textElement(TripElements.Trip.Time, [Icons.CLOCK, trip.destination.eta, 'MIN'].join(' '))
+                    ];
+                });
             }
         });
     }
@@ -479,6 +483,14 @@ function changeToWatchface(watchfaceId, animation) {
         showNotifications: false,
         changeWatchfaceIndex: watchfaceId
     };
+}
+
+function getLocationName(location) {
+    return googleApi.searchPlace(location, 10, {
+        types: 'route'
+    }).then(function(places) {
+        return places && places[0] && places[0].name || 'Unknown place.';
+    });
 }
 
 vectorStream.startStreamServer(3090, function() {
