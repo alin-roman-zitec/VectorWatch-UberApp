@@ -55,14 +55,10 @@ UberApi.prototype.post = function(path, data) {
             }
             return future.reject(err);
         }
-        try {
-            if (res.statusCode == 204) {
-                future.resolve();
-            } else {
-                future.resolve(JSON.parse(body));
-            }
-        } catch (err) {
-            future.reject(err);
+        if (res.statusCode == 204) {
+            future.resolve();
+        } else {
+            future.resolve(body);
         }
     });
 
@@ -87,14 +83,10 @@ UberApi.prototype.put = function(path, data) {
             }
             return future.reject(err);
         }
-        try {
-            if (res.statusCode == 204) {
-                future.resolve();
-            } else {
-                future.resolve(JSON.parse(body));
-            }
-        } catch (err) {
-            future.reject(err);
+        if (res.statusCode == 204) {
+            future.resolve();
+        } else {
+            future.resolve(body);
         }
     });
 
@@ -119,14 +111,10 @@ UberApi.prototype.delete = function(path, data) {
             }
             return future.reject(err);
         }
-        try {
-            if (res.statusCode == 204) {
-                future.resolve();
-            } else {
-                future.resolve(JSON.parse(body));
-            }
-        } catch (err) {
-            future.reject(err);
+        if (res.statusCode == 204) {
+            future.resolve();
+        } else {
+            future.resolve(body);
         }
     });
 
@@ -254,6 +242,18 @@ UberApi.prototype.requestRideAtLocation = function(productId, location) {
 
 UberApi.prototype.cancelTrip = function(rideId) {
     return this.delete('/v1/requests/rideId', {});
+};
+
+UberApi.prototype.getProfile = function() {
+    return this.get('/v1/me');
+};
+
+UberApi.prototype.getTripReceipt = function(tripId) {
+    return this.get('/v1/requests/' + tripId + '/receipt');
+};
+
+UberApi.prototype.getTripDetails = function(tripId) {
+    return this.get('/v1/requests/' + tripId);
 };
 
 module.exports = UberApi;

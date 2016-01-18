@@ -10,6 +10,7 @@ var connection = mysql.createConnection({
     database: 'UberApp'
 });
 connection.connect();
+connection.queryAsync = Promise.promisify(connection.query);
 
 var optionIndex = 0;
 var ChooseLocationOptions = {
@@ -61,8 +62,10 @@ var Places = {
 
 var Icons = {
     CLOCK: '\ue123',
-    MULTIPLIER: '\ue321',
-    PROFILE: '\ue432'
+    MULTIPLIER: '\ue022',
+    PROFILE: '\ue023',
+    PIN: '\ue021',
+    PRICE: '\ue020'
 };
 
 var tripElementIndex = 0;
@@ -137,6 +140,16 @@ var getLabelById = function(id) {
     return future.promise;
 };
 
+var updateLastTripIdForUser = function(userId, lastTripId) {
+    connection.queryAsync('INSERT IGNORE INTO LastTripId (userId, lastTripId) VALUES (?, ?)', [userId, lastTripId]);
+};
+
+var getLastTripIdForUser = function(userId) {
+    return connection.queryAsync('SELECT lastTripId FROM LastTripId WHERE userId = ?', [userId]).then(function(records) {
+        return records && records[0] && records[0].lastTripId;
+    });
+};
+
 
 var vectorStream = vectorWatch.createStreamNode({
     streamUID: process.env.STREAM_UID,
@@ -152,7 +165,7 @@ var vectorStream = vectorWatch.createStreamNode({
         callbackUrl: 'https://vectorwatch-proxy.azurewebsites.net/uber-app/oauth_callback',
         accessTokenUrl: 'https://login.uber.com/oauth/v2/token?grant_type=authorization_code',
 
-        authorizeUrl: 'https://login.uber.com/oauth/v2/authorize?response_type=code&scope=request history places all_trips request_receipt'
+        authorizeUrl: 'https://login.uber.com/oauth/v2/authorize?response_type=code&scope=request history places all_trips request_receipt profile'
     },
 
     database: {
@@ -206,11 +219,11 @@ vectorStream.requestConfig = function(resolve, reject, authTokens) {
     });
 };
 
-vectorStream.callMethod = function(resolve, reject, methodName, args, authTokens) {
+vectorStream.callMethod = function(resolve, reject, methodName, args, authTokens, state, location) {
     if (!authTokens) {
         return reject(new Error('Invalid auth tokens.'), 901);
     }
-    callMethod(methodName, args, authTokens).then(resolve).catch(reject);
+    callMethod(methodName, args, authTokens, state, location).then(resolve).catch(reject);
 };
 
 var callMethod = function(methodName, args, authTokens, state, location) {
@@ -229,15 +242,23 @@ var RemoteMethods = {
     loadChooseLocation: function(uberApi) {
         return uberApi.getCurrentTrip().then(function(trip) {
             if (trip) {
-                return list([
-                    selectOption(ChooseLocationOptions.SHOW_TRIP, 'Show current trip', {
-                        onSelect: changeToWatchface(Watchfaces.TRIP)
-                    })
-                ]);
+                return uberApi.getProfile().then(function(userId) {
+                    updateLastTripIdForUser(userId, trip.request_id).then(function() {
+
+                    });
+
+                    return list([
+                        selectOption(ChooseLocationOptions.SHOW_TRIP, 'Show current trip', {
+                            onSelect: changeToWatchface(Watchfaces.TRIP)
+                        })
+                    ]);
+                });
             }
 
             return uberApi.getAvailablePlaces().then(function(places) {
-                var locations = [selectOption(ChooseLocationOptions.LOCATE, 'My Location')];
+                var locations = [selectOption(ChooseLocationOptions.LOCATE, 'My Location', {
+                    onSelect: changeToWatchface(Watchfaces.RETRIEVE_LOCATION)
+                })];
 
                 if (places.home) {
                     locations.push(selectOption(ChooseLocationOptions.HOME, 'Home: ' + places.home.address));
@@ -278,22 +299,23 @@ var RemoteMethods = {
         // });
     },
 
-    // Called in Watchfaces.ESTIMATE
+    // Called in Watchfaces.ESTIMATEreque
     estimate: function(uberApi, args, state, location) {
-        var promise;
+        var estimationPromise, locationPromise;
         if (ChooseLocationOptions.HOME == args.id) {
-            promise = uberApi.estimateByPlace(state.Product, Places.HOME);
+            estimationPromise = uberApi.estimateByPlace(state.Product, Places.HOME);
+            locationPromise = uberApi.getPlace(Places.HOME);
         } else if (ChooseLocationOptions.WORK == args.id) {
-            promise = uberApi.estimateByPlace(state.Product, Places.WORK);
+            estimationPromise = uberApi.estimateByPlace(state.Product, Places.WORK);
+            locationPromise = uberApi.getPlace(Places.WORK);
         } else {
-            promise = uberApi.estimateByLocation(state.Product, location);
+            estimationPromise = uberApi.estimateByLocation(state.Product, location);
+            locationPromise = Promise.resolve({ address: 'My current address' });
         }
 
-        // locationApi.getMyAddress().then(...
-        var locationName = 'My current address';
-        return promise.then(function(estimation) {
+        return Promise.join(estimationPromise, locationPromise).spread(function(estimation, location) {
             return [
-                textElement(0, locationName),
+                textElement(0, location.address),
                 textElement(1, [Icons.CLOCK, estimation.pickup_estimate, 'MIN'].join(' ')),
                 textElement(2, [Icons.MULTIPLIER, estimation.price.surge_multiplier, 'x'].join(' '))
             ];
@@ -311,6 +333,12 @@ var RemoteMethods = {
         }
 
         return promise.then(function(trip) {
+            uberApi.getProfile().then(function(profile) {
+                return updateLastTripIdForUser(profile.uuid, trip.request_id);
+            }).then(function() {
+
+            });
+
             return null;
         });
     },
@@ -334,17 +362,36 @@ var RemoteMethods = {
     getTripUpdates: function(uberApi) {
         return uberApi.getCurrentTrip().then(function(trip) {
             if (!trip) {
-                // get lastTripId from database
-                // then get trip receipt
-                // and show the last state of TRIP watchface
-                return;
+                return uberApi.getProfile().then(function(profile) {
+                    return getLastTripIdForUser(profile.uuid);
+                }).then(function(lastTripId) {
+                    if (!lastTripId) {
+                        // how did he even got here?
+                    }
+
+                    return [uberApi.getTripDetails(lastTripId), uberApi.getTripReceipt(lastTripId)];
+                }).spread(function(trip, receipt) {
+                    var locationName = 'destination address';
+                    return [
+                        bitmapElement(TripElements.Searching.Icon, Resources.Empty),
+                        textElement(TripElements.Searching.Label, ''),
+                        textElement(TripElements.Trip.Title, ''),
+                        textElement(TripElements.Trip.Address, ''),
+                        textElement(TripElements.Trip.Name, ''),
+                        textElement(TripElements.Trip.Time, ''),
+
+                        bitmapElement(TripElements.Receipt.Icon, Resources.Uber),
+                        textElement(TripElements.Receipt.Address, [Icons.PIN, locationName].join(' ')),
+                        textElement(TripElements.Receipt.Price, [Icons.PRICE, receipt.total_charged].join(' '))
+                    ];
+                });
             }
 
             if ('processing' == trip.status) {
                 return null;
             } else if ('accepted' == trip.status) {
                 return [
-                    iconElement(TripElements.Searching.Icon, Resources.Empty),
+                    bitmapElement(TripElements.Searching.Icon, Resources.Empty),
                     textElement(TripElements.Searching.Label, ''),
 
                     textElement(TripElements.Arriving.Car, [trip.vehicle.make, trip.vehicle.model].join(' ')),
@@ -354,6 +401,8 @@ var RemoteMethods = {
                 ];
             } else if ('arriving' == trip.status) {
                 return [
+                    bitmapElement(TripElements.Searching.Icon, Resources.Empty),
+                    textElement(TripElements.Searching.Label, ''),
                     textElement(TripElements.Arriving.Car, ''),
                     textElement(TripElements.Arriving.Multiplier, ''),
                     textElement(TripElements.Arriving.Plate, ''),
@@ -365,12 +414,14 @@ var RemoteMethods = {
                     textElement(TripElements.Ready.Plate, trip.vehicle.license_plate)
                 ];
             } else if ('in_progress' == trip.status) {
-                var locationName = ''; // ce-i cu asta?
+                var locationName = 'destination address'; // ce-i cu asta?
                 return [
-                    textElement(TripElements.Ready.Title, 'YOUR RIDE IS HERE'),
-                    textElement(TripElements.Ready.Name, [Icons.PROFILE, trip.driver.name].join(' ')),
-                    textElement(TripElements.Ready.Car, [trip.vehicle.make, trip.vehicle.model].join(' ')),
-                    textElement(TripElements.Ready.Plate, trip.vehicle.license_plate),
+                    bitmapElement(TripElements.Searching.Icon, Resources.Empty),
+                    textElement(TripElements.Searching.Label, ''),
+                    textElement(TripElements.Ready.Title, ''),
+                    textElement(TripElements.Ready.Name, ''),
+                    textElement(TripElements.Ready.Car, ''),
+                    textElement(TripElements.Ready.Plate, ''),
                     textElement(TripElements.Cancel, ''),
 
                     textElement(TripElements.Trip.Title, 'ON TRIP'),
@@ -410,6 +461,14 @@ function textElement(elementId, label) {
         type: 'text_element',
         elementId: elementId,
         label: label || ''
+    };
+}
+
+function bitmapElement(elementId, resourceId) {
+    return {
+        type: 'bitmap_element',
+        elementId: elementId,
+        resourceId: resourceId
     };
 }
 
