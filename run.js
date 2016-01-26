@@ -53,6 +53,11 @@ var Watchfaces = {
     TRIP: 4
 };
 
+var MessageTypes = {
+    COMMAND: 'command',
+    ELEMENT: 'element_data'
+};
+
 var Actions = {
     NONE: 'NONE',
     CHANGE_TO_NEXT_WATCHFACE: 'CHANGE_TO_NEXT_WATCHFACE',
@@ -284,7 +289,16 @@ var RemoteMethods = {
                     locations.push(selectOption(ChooseLocationOptions.WORK, 'Work: ' + places.work.address));
                 }
 
-                return list(locations);
+                return [
+                    list(locations),
+                    {
+                        messageType: MessageTypes.COMMAND,
+                        command: Actions.CHANGE_WATCHFACE,
+                        parameters: {
+                            watchfaceId: 2
+                        }
+                    }
+                ];
             });
         });
     },
@@ -495,7 +509,7 @@ function textElement(elementId, label) {
     return {
         type: 'text_element',
         elementId: elementId,
-        label: label || ''
+        value: label || ''
     };
 }
 
