@@ -6,14 +6,29 @@ var GoogleApi = require('./GoogleApi.js');
 
 var googleApi = new GoogleApi(process.env.GOOGLE_API_KEY);
 
-var connection = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'UberApp'
-});
-connection.connect();
-connection.queryAsync = Promise.promisify(connection.query);
+var connection;
+function createDatabaseConnection() {
+    connection = mysql.createConnection({
+        host: 'localhost',
+        user: 'root',
+        password: '',
+        database: 'UberApp'
+    });
+    connection.connect(function(err) {
+        if (err) {
+            setTimeout(createDatabaseConnection, 2000);
+        }
+    });
+    connection.queryAsync = Promise.promisify(connection.query);
+    connection.on('error', function(err) {
+        if (err.code == 'PROTOCOL_CONNECTION_LOST') {
+            createDatabaseConnection();
+        } else {
+            throw err;
+        }
+    });
+}
+createDatabaseConnection();
 
 var optionIndex = 0;
 var ChooseLocationOptions = {
@@ -301,7 +316,7 @@ var RemoteMethods = {
         });
     },
 
-    // Called in Watchfaces.ESTIMATEreque
+    // Called in Watchfaces.ESTIMATE
     estimate: function(uberApi, args, state, location) {
         var estimationPromise, locationPromise;
         if (ChooseLocationOptions.HOME == args.id) {
@@ -316,6 +331,16 @@ var RemoteMethods = {
         }
 
         return Promise.join(estimationPromise, locationPromise).spread(function(estimation, location) {
+            if (estimation.price.surge_multiplier > 1) {
+                // we need to tell this guy that the surge is higher than 1.0 and he have to request the ride via his
+                // uber app on his smartphone, so that he can confirm the surge
+                return [
+                    textElement(0, '')
+                ];
+                // but then again, why would we show him the surge multiplier down here if it is only displayed
+                // when the surge is 1.0 ?
+            }
+
             return [
                 textElement(0, location.address),
                 textElement(1, [Icons.CLOCK, estimation.pickup_estimate, 'MIN'].join(' ')),
@@ -341,6 +366,14 @@ var RemoteMethods = {
 
             });
 
+            return null;
+        }).catch(UberApi.NoDriversError, function() {
+            // we need to tell this guy that there are no available drivers
+            // however, this method is called blindly. immediately after this method finishes,
+            // the watch is performing the polling calls, like the request is expected to
+            // actually create a valid request.
+            // we cannot use the response of this method to inform the situation, we have to
+            // find a solution in the next watchface (the polling method)
             return null;
         });
     },

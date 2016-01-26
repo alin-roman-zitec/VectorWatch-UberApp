@@ -6,6 +6,24 @@ var UberApi = function UberApi(accessToken) {
     this.accessToken = accessToken;
 };
 
+/** ERRORS **/
+UberApi.RateLimitError = function(message) {
+    this.message = message;
+    this.name = 'RateLimitError';
+    Error.captureStackTrace(this, UberApi.RateLimitError);
+};
+UberApi.RateLimitError.prototype = Object.create(Error.prototype);
+UberApi.RateLimitError.prototype.constructor = UberApi.RateLimitError;
+
+UberApi.NoDriversError = function(message) {
+    this.message = message;
+    this.name = 'NoDriversError';
+    Error.captureStackTrace(this, UberApi.NoDriversError);
+};
+UberApi.NoDriversError.prototype = Object.create(Error.prototype);
+UberApi.NoDriversError.prototype.constructor = UberApi.NoDriversError;
+
+
 UberApi.sandbox = true;
 
 UberApi.prototype.get = function(path, params) {
@@ -15,6 +33,15 @@ UberApi.prototype.get = function(path, params) {
         headers: this.getHeaders()
     }, function(err, res, body) {
         if (err) return future.reject(err);
+
+        if (res.statusCode == 429) {
+            return future.reject(new UberApi.RateLimitError('Rate limit reached.'));
+        }
+
+        if (res.statusCode == 409) {
+            return future.reject(new UberApi.NoDriversError('No drivers available.'));
+        }
+
         if (res.statusCode < 200 || res.statusCode >= 300) {
             try {
                 err = JSON.parse(body);
@@ -47,6 +74,15 @@ UberApi.prototype.post = function(path, data) {
         body: data
     }, function(err, res, body) {
         if (err) return future.reject(err);
+
+        if (res.statusCode == 429) {
+            return future.reject(new UberApi.RateLimitError('Rate limit reached.'));
+        }
+
+        if (res.statusCode == 409) {
+            return future.reject(new UberApi.NoDriversError('No drivers available.'));
+        }
+
         if (res.statusCode < 200 || res.statusCode >= 300) {
             try {
                 err = JSON.parse(body);
@@ -75,6 +111,15 @@ UberApi.prototype.put = function(path, data) {
         body: data
     }, function(err, res, body) {
         if (err) return future.reject(err);
+
+        if (res.statusCode == 429) {
+            return future.reject(new UberApi.RateLimitError('Rate limit reached.'));
+        }
+
+        if (res.statusCode == 409) {
+            return future.reject(new UberApi.NoDriversError('No drivers available.'));
+        }
+
         if (res.statusCode < 200 || res.statusCode >= 300) {
             try {
                 err = JSON.parse(body);
@@ -103,6 +148,15 @@ UberApi.prototype.delete = function(path, data) {
         body: data
     }, function(err, res, body) {
         if (err) return future.reject(err);
+
+        if (res.statusCode == 429) {
+            return future.reject(new UberApi.RateLimitError('Rate limit reached.'));
+        }
+
+        if (res.statusCode == 409) {
+            return future.reject(new UberApi.NoDriversError('No drivers available.'));
+        }
+
         if (res.statusCode < 200 || res.statusCode >= 300) {
             try {
                 err = JSON.parse(body);
