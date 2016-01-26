@@ -192,14 +192,12 @@ var vectorStream = vectorWatch.createStreamNode({
 });
 vectorStream.debugMode = true;
 
-vectorStream.requestConfig = function(resolve, reject, authTokens) {
+vectorStream.requestConfig = function(resolve, reject, authTokens, location) {
     if (!authTokens) return reject(new Error('Invalid auth tokens.'), 901);
+    if (!location) return reject(new Error('Invalid location.'), 400);
 
     var api = new UberApi(authTokens.access_token);
-    api.getProductsForLocation({
-        latitude: 44.452287299999995,
-        longitude: 26.096447600000033
-    }).then(function(products) {
+    api.getProductsForLocation(location).then(function(products) {
         var productStringIds = Object.keys(products);
         if (!productStringIds.length) {
             return [];
