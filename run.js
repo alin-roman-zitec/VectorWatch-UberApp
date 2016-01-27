@@ -50,7 +50,16 @@ var Watchfaces = {
     CHOOSE_LOCATION: 1,
     RETRIEVE_LOCATION: 2,
     ESTIMATE: 3,
-    TRIP: 4
+    SEARCHING: 4,
+    ARRIVING: 5,
+    READY: 6,
+    TRIP: 7,
+    RECEIPT: 8,
+    ERROR: 9
+};
+
+var Elements = {
+    ErrorLabel: 0
 };
 
 var MessageTypes = {
@@ -84,7 +93,7 @@ var Places = {
 };
 
 var Icons = {
-    CLOCK: '\ue123',
+    CLOCK: '\ue02b',
     MULTIPLIER: '\ue022',
     PROFILE: '\ue023',
     PIN: '\ue021',
@@ -265,20 +274,24 @@ var RemoteMethods = {
             if (trip) {
                 return uberApi.getProfile().then(function(userId) {
                     updateLastTripIdForUser(userId, trip.request_id).then(function() {
-
+                        // maybe we should save the destination also? in this case, we can't do it here
                     });
 
-                    return list([
-                        selectOption(ChooseLocationOptions.SHOW_TRIP, 'Show current trip', {
-                            onSelect: changeToWatchface(Watchfaces.TRIP)
-                        })
-                    ]);
+                    if (trip.status == 'processing') {
+                        return changeToWatchfaceCommand(Watchfaces.SEARCHING);
+                    } else if (trip.status == 'accepted') {
+                        return changeToWatchfaceCommand(Watchfaces.ARRIVING);
+                    } else if (trip.status == 'arriving') {
+                        return changeToWatchfaceCommand(Watchfaces.READY);
+                    } else {
+                        return changeToWatchfaceCommand(Watchfaces.TRIP);
+                    }
                 });
             }
 
             return uberApi.getAvailablePlaces().then(function(places) {
                 var locations = [selectOption(ChooseLocationOptions.LOCATE, 'Locate Me', {
-                    onSelect: changeToWatchface(Watchfaces.RETRIEVE_LOCATION)
+                    onSelect: changeToWatchfaceAction(Watchfaces.RETRIEVE_LOCATION)
                 })];
 
                 if (places.home) {
@@ -289,16 +302,7 @@ var RemoteMethods = {
                     locations.push(selectOption(ChooseLocationOptions.WORK, 'Work: ' + places.work.address));
                 }
 
-                return [
-                    list(locations),
-                    {
-                        messageType: MessageTypes.COMMAND,
-                        command: Actions.CHANGE_WATCHFACE,
-                        parameters: {
-                            watchfaceId: 2
-                        }
-                    }
-                ];
+                return list(locations);
             });
         });
     },
@@ -306,26 +310,10 @@ var RemoteMethods = {
     // Called in Watchfaces.RETIREVE_LOCATION
     getLocationName: function(uberApi, args, state, location) {
         if (!location) {
-            return [
-                list([
-                    selectOption(RetrievingLocationOptions.RETRY, 'Retry', {
-                        onSelect: changeToWatchface(Watchfaces.RETRIEVE_LOCATION)
-                    })
-                ]),
-                textElement(1, 'Error')
-            ];
+            return displayError('Can\'t locate you');
         }
 
-        return getLocationName(location).then(function(locationName) {
-            return [
-                list([
-                    selectOption(RetrievingLocationOptions.CONTINUE, 'Continue', {
-                        onSelect: changeToWatchface(Watchfaces.ESTIMATE)
-                    })
-                ]),
-                textElement(1, locationName)
-            ];
-        });
+        return changeToWatchfaceCommand(Watchfaces.ESTIMATE);
     },
 
     // Called in Watchfaces.ESTIMATE
@@ -344,13 +332,7 @@ var RemoteMethods = {
 
         return Promise.join(estimationPromise, locationPromise).spread(function(estimation, location) {
             if (estimation.price.surge_multiplier > 1) {
-                // we need to tell this guy that the surge is higher than 1.0 and he have to request the ride via his
-                // uber app on his smartphone, so that he can confirm the surge
-                return [
-                    textElement(0, '')
-                ];
-                // but then again, why would we show him the surge multiplier down here if it is only displayed
-                // when the surge is 1.0 ?
+                return displayError('Surge is enabled');
             }
 
             return [
@@ -378,15 +360,9 @@ var RemoteMethods = {
 
             });
 
-            return null;
+            return changeToWatchfaceCommand(Watchfaces.SEARCHING);
         }).catch(UberApi.NoDriversError, function() {
-            // we need to tell this guy that there are no available drivers
-            // however, this method is called blindly. immediately after this method finishes,
-            // the watch is performing the polling calls, like the request is expected to
-            // actually create a valid request.
-            // we cannot use the response of this method to inform the situation, we have to
-            // find a solution in the next watchface (the polling method)
-            return null;
+            return displayError('No drivers');
         });
     },
 
@@ -397,18 +373,22 @@ var RemoteMethods = {
             }
 
             if ('in_progress' == trip.status) {
-                return;
+                return changeToWatchfaceCommand(Watchfaces.TRIP);
             }
 
             return uberApi.cancelRideRequest(trip.request_id);
         }).then(function() {
-            return null;
+            return displayError('Trip canceled');
         });
     },
 
     getTripUpdates: function(uberApi) {
         return uberApi.getCurrentTrip().then(function(trip) {
             if (!trip) {
+                // we get here when the trip is completed or canceled by the driver
+                // we can't determine if the trip is canceled by the driver so we assume that it is completed
+                // so get him to the receipt watchface
+
                 return uberApi.getProfile().then(function(profile) {
                     return getLastTripIdForUser(profile.uuid);
                 }).then(function(lastTripId) {
@@ -419,47 +399,31 @@ var RemoteMethods = {
                     return [uberApi.getTripDetails(lastTripId), uberApi.getTripReceipt(lastTripId)];
                 }).spread(function(trip, receipt) {
                     return getLocationName(trip.destination).then(function(locationName) {
-                        return [
-                            bitmapElement(TripElements.Searching.Icon, Resources.Empty),
-                            textElement(TripElements.Searching.Label, ''),
-                            textElement(TripElements.Trip.Title, ''),
-                            textElement(TripElements.Trip.Address, ''),
-                            textElement(TripElements.Trip.Name, ''),
-                            textElement(TripElements.Trip.Time, ''),
-
-                            bitmapElement(TripElements.Receipt.Icon, Resources.Uber),
-                            textElement(TripElements.Receipt.Address, [Icons.PIN, locationName].join(' ')),
-                            textElement(TripElements.Receipt.Price, [Icons.PRICE, receipt.total_charged].join(' '))
-                        ];
+                        return updateLabelsAndChangeWatchface(Watchfaces.RECEIPT, [
+                            [TripElements.Receipt.Address, [Icons.PIN, locationName].join(' ')],
+                            [TripElements.Receipt.Price, [Icons.PRICE, receipt.total_charged].join(' ')]
+                        ]);
                     });
                 });
             }
 
             if ('processing' == trip.status) {
-                return null;
+                return changeToWatchfaceCommand(Watchfaces.SEARCHING);
             } else if ('accepted' == trip.status) {
                 return [
-                    bitmapElement(TripElements.Searching.Icon, Resources.Empty),
-                    textElement(TripElements.Searching.Label, ''),
-
-                    textElement(TripElements.Arriving.Car, [trip.vehicle.make, trip.vehicle.model].join(' ')),
-                    textElement(TripElements.Arriving.Multiplier, [Icons.MULTIPLIER, trip.surge_multiplier, 'x'].join(' ')),
-                    textElement(TripElements.Arriving.Plate, trip.vehicle.license_plate),
-                    textElement(TripElements.Arriving.Time, [Icons.CLOCK, trip.eta, 'MIN'].join(' '))
+                    textElement(TripElements.Arriving.Car, [trip.vehicle.make, trip.vehicle.model].join(' '), Watchfaces.ARRIVING),
+                    textElement(TripElements.Arriving.Multiplier, [Icons.MULTIPLIER, trip.surge_multiplier, 'x'].join(' '), Watchfaces.ARRIVING),
+                    textElement(TripElements.Arriving.Plate, trip.vehicle.license_plate, Watchfaces.ARRIVING),
+                    textElement(TripElements.Arriving.Time, [Icons.CLOCK, trip.eta, 'MIN'].join(' '), Watchfaces.ARRIVING),
+                    changeToWatchfaceCommand(Watchfaces.ARRIVING)
                 ];
             } else if ('arriving' == trip.status) {
                 return [
-                    bitmapElement(TripElements.Searching.Icon, Resources.Empty),
-                    textElement(TripElements.Searching.Label, ''),
-                    textElement(TripElements.Arriving.Car, ''),
-                    textElement(TripElements.Arriving.Multiplier, ''),
-                    textElement(TripElements.Arriving.Plate, ''),
-                    textElement(TripElements.Arriving.Time, ''),
-
-                    textElement(TripElements.Ready.Title, 'YOUR RIDE IS HERE'),
-                    textElement(TripElements.Ready.Name, [Icons.PROFILE, trip.driver.name].join(' ')),
-                    textElement(TripElements.Ready.Car, [trip.vehicle.make, trip.vehicle.model].join(' ')),
-                    textElement(TripElements.Ready.Plate, trip.vehicle.license_plate)
+                    textElement(TripElements.Ready.Title, 'YOUR RIDE IS HERE', Watchfaces.READY),
+                    textElement(TripElements.Ready.Name, [Icons.PROFILE, trip.driver.name].join(' '), Watchfaces.READY),
+                    textElement(TripElements.Ready.Car, [trip.vehicle.make, trip.vehicle.model].join(' '), Watchfaces.READY),
+                    textElement(TripElements.Ready.Plate, trip.vehicle.license_plate, Watchfaces.READY),
+                    changeToWatchfaceCommand(Watchfaces.READY)
                 ];
             } else if ('in_progress' == trip.status) {
                 return getLocationName(trip.destination).then(function(locationName) {
@@ -483,6 +447,10 @@ var RemoteMethods = {
     }
 };
 
+function changeToWatchfaceByStatus(trip) {
+
+}
+
 function list(items) {
     return {
         type: 'list',
@@ -505,12 +473,35 @@ function selectOption(optionId, label, attribs) {
     return element;
 }
 
-function textElement(elementId, label) {
-    return {
+function textElement(elementId, label, watchfaceId) {
+    var data = {
         type: 'text_element',
         elementId: elementId,
         value: label || ''
     };
+
+    if (watchfaceId) {
+        data.watchfaceId = watchfaceId;
+    }
+
+    return data;
+}
+
+function updateLabelsAndChangeWatchface(watchfaceId, data) {
+    var messages = [];
+    for (var elementId in data) {
+        var label = data[elementId];
+        messages.push(textElement(elementId, label, watchfaceId));
+    }
+    messages.push(changeToWatchfaceCommand(watchfaceId));
+    return messages;
+}
+
+function displayError(message) {
+    return [
+        changeToWatchfaceCommand(Watchfaces.ERROR),
+        textElement(Elements.ErrorLabel, message, Watchfaces.ERROR)
+    ];
 }
 
 function bitmapElement(elementId, resourceId) {
@@ -521,7 +512,7 @@ function bitmapElement(elementId, resourceId) {
     };
 }
 
-function changeToWatchface(watchfaceId, animation) {
+function changeToWatchfaceAction(watchfaceId, animation) {
     return {
         action: Actions.CHANGE_WATCHFACE,
         animation: animation || Animations.LEFT_OUT,
@@ -536,6 +527,16 @@ function getLocationName(location) {
     }).then(function(places) {
         return places && places[0] && places[0].name || 'Unknown place.';
     });
+}
+
+function changeToWatchfaceCommand(watchfaceId) {
+    return {
+        messageType: MessageTypes.COMMAND,
+        command: Actions.CHANGE_WATCHFACE,
+        parameters: {
+            watchfaceId: watchfaceId
+        }
+    };
 }
 
 vectorStream.startStreamServer(3090, function() {
