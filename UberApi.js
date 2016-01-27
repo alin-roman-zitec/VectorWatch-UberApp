@@ -23,6 +23,14 @@ UberApi.NoDriversError = function(message) {
 UberApi.NoDriversError.prototype = Object.create(Error.prototype);
 UberApi.NoDriversError.prototype.constructor = UberApi.NoDriversError;
 
+UberApi.SurgeEnabledError = function(message) {
+    this.message = message;
+    this.name = 'SurgeEnabledError';
+    Error.captureStackTrace(this, UberApi.SurgeEnabledError);
+};
+UberApi.SurgeEnabledError.prototype = Object.create(Error.prototype);
+UberApi.SurgeEnabledError.prototype.constructor = UberApi.SurgeEnabledError;
+
 
 UberApi.sandbox = true;
 
@@ -39,6 +47,9 @@ UberApi.prototype.get = function(path, params) {
         }
 
         if (res.statusCode == 409) {
+            if (res.statusMessage == 'surge') {
+                return future.reject(new UberApi.SurgeEnabledError('Surge is enabled.'));
+            }
             return future.reject(new UberApi.NoDriversError('No drivers available.'));
         }
 
@@ -80,6 +91,9 @@ UberApi.prototype.post = function(path, data) {
         }
 
         if (res.statusCode == 409) {
+            if (res.statusMessage == 'surge') {
+                return future.reject(new UberApi.SurgeEnabledError('Surge is enabled.'));
+            }
             return future.reject(new UberApi.NoDriversError('No drivers available.'));
         }
 
@@ -117,6 +131,9 @@ UberApi.prototype.put = function(path, data) {
         }
 
         if (res.statusCode == 409) {
+            if (res.statusMessage == 'surge') {
+                return future.reject(new UberApi.SurgeEnabledError('Surge is enabled.'));
+            }
             return future.reject(new UberApi.NoDriversError('No drivers available.'));
         }
 
@@ -154,6 +171,9 @@ UberApi.prototype.delete = function(path, data) {
         }
 
         if (res.statusCode == 409) {
+            if (res.statusMessage == 'surge') {
+                return future.reject(new UberApi.SurgeEnabledError('Surge is enabled.'));
+            }
             return future.reject(new UberApi.NoDriversError('No drivers available.'));
         }
 
