@@ -225,6 +225,9 @@ var RemoteMethods = {
             estimationPromise = uberApi.estimateByPlace(state.Product, Places.WORK);
             locationPromise = uberApi.getPlace(Places.WORK);
         } else {
+            if (!location) {
+                return displayError('Can\'t locate you');
+            }
             estimationPromise = uberApi.estimateByLocation(state.Product, location);
             locationPromise = getLocationName(location).then(function(locationName) { return { address: locationName }; });
         }
@@ -254,6 +257,9 @@ var RemoteMethods = {
         } else if (ChooseLocationOptions.WORK == args.id) {
             promise = uberApi.requestRideAtPlace(state.Product, Places.WORK);
         } else {
+            if (!location) {
+                return displayError('Can\'t locate you');
+            }
             promise = uberApi.requestRideAtLocation(state.Product, location);
         }
 
