@@ -243,9 +243,9 @@ var RemoteMethods = {
             var multiplier = '1.0';
 
             return [
-                textElement(0, location.address),
-                textElement(1, [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' ')),
-                textElement(2, [Icons.MULTIPLIER, multiplier, 'x'].join(' '))
+                textElement(1, location.address),
+                textElement(2, [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' ')),
+                textElement(3, [Icons.MULTIPLIER, multiplier, 'x'].join(' '))
             ];
         });
     },
@@ -288,7 +288,7 @@ var RemoteMethods = {
                 return changeToWatchfaceCommand(Watchfaces.TRIP, Animations.NONE);
             }
 
-            return uberApi.cancelRideRequest(trip.request_id);
+            return uberApi.cancelTrip(trip.request_id);
         }).then(function() {
             return displayError('Trip canceled');
         });
@@ -322,28 +322,28 @@ var RemoteMethods = {
             if ('processing' == trip.status) {
                 return updateLabelsAndChangeWatchface(Watchfaces.SEARCHING, {
                     1: ''
-                }, { ttl: 5, instant: true });
+                }, { ttl: 15, instant: true });
             } else if ('accepted' == trip.status) {
                 return updateLabelsAndChangeWatchface(Watchfaces.ARRIVING, {
-                    0: [trip.vehicle.make, trip.vehicle.model].join(' '),
-                    1: [Icons.MULTIPLIER, trip.surge_multiplier, 'x'].join(' '),
-                    2: trip.vehicle.license_plate,
-                    3: [Icons.CLOCK, trip.eta, 'MIN'].join(' ')
-                }, { instant: true });
+                    3: [trip.vehicle.make, trip.vehicle.model].join(' '),
+                    2: [Icons.MULTIPLIER, trip.surge_multiplier, 'x'].join(' '),
+                    4: trip.vehicle.license_plate,
+                    1: [Icons.CLOCK, trip.eta, 'MIN'].join(' ')
+                }, { instant: true, ttl: 15 });
             } else if ('arriving' == trip.status) {
                 return updateLabelsAndChangeWatchface(Watchfaces.READY, {
-                    0: [Icons.PROFILE, trip.driver.name].join(' '),
-                    1: [trip.vehicle.make, trip.vehicle.model].join(' '),
-                    2: trip.vehicle.license_plate
-                }, { instant: true });
+                    2: [Icons.PROFILE, trip.driver.name].join(' '),
+                    3: [trip.vehicle.make, trip.vehicle.model].join(' '),
+                    4: trip.vehicle.license_plate
+                }, { instant: true, ttl: 15 });
             } else if ('in_progress' == trip.status) {
                 return getLocationName(trip.destination).then(function(locationName) {
                     return updateLabelsAndChangeWatchface(Watchfaces.TRIP, {
-                        0: [Icons.PIN, locationName].join(' '),
-                        1: [Icons.PROFILE, trip.driver.name].join(' '),
-                        2: [Icons.CLOCK, trip.destination.eta, 'MIN'].join(' ')
-                    });
-                }, { instant: true });
+                        2: [Icons.PIN, locationName].join(' '),
+                        3: [Icons.PROFILE, trip.driver.name].join(' '),
+                        4: [Icons.CLOCK, trip.destination.eta, 'MIN'].join(' ')
+                    }, { instant: true, ttl: 15 });
+                });
             } else {
                 return changeToWatchfaceCommand(Watchfaces.COVER);
             }
@@ -406,8 +406,8 @@ function updateLabelsAndChangeWatchface(watchfaceId, data, options) {
 
 function displayError(message) {
     return updateLabelsAndChangeWatchface(Watchfaces.ERROR, {
-        0: message
-    });
+        2: message
+    }, {});
 }
 
 function bitmapElement(elementId, resourceId) {
