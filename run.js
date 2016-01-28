@@ -320,7 +320,9 @@ var RemoteMethods = {
             }
 
             if ('processing' == trip.status) {
-                return changeToWatchfaceCommand(Watchfaces.SEARCHING);
+                return updateLabelsAndChangeWatchface(Watchfaces.SEARCHING, {
+                    1: ''
+                }, 5);
             } else if ('accepted' == trip.status) {
                 return updateLabelsAndChangeWatchface(Watchfaces.ARRIVING, {
                     0: [trip.vehicle.make, trip.vehicle.model].join(' '),
@@ -371,7 +373,7 @@ function selectOption(optionId, label, attribs) {
     return element;
 }
 
-function textElement(elementId, label, watchfaceId) {
+function textElement(elementId, label, watchfaceId, ttl) {
     var data = {
         type: 'text_element',
         elementId: elementId,
@@ -382,14 +384,18 @@ function textElement(elementId, label, watchfaceId) {
         data.watchfaceId = watchfaceId;
     }
 
+    if (ttl) {
+        data.ttl = ttl;
+    }
+
     return data;
 }
 
-function updateLabelsAndChangeWatchface(watchfaceId, data) {
+function updateLabelsAndChangeWatchface(watchfaceId, data, ttl) {
     var messages = [];
     for (var elementId in data) {
         var label = data[elementId];
-        messages.push(textElement(elementId, label, watchfaceId));
+        messages.push(textElement(elementId, label, watchfaceId, ttl));
     }
     messages.push(changeToWatchfaceCommand(watchfaceId));
     return messages;
