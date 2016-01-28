@@ -285,7 +285,7 @@ var RemoteMethods = {
             }
 
             if ('in_progress' == trip.status) {
-                return changeToWatchfaceCommand(Watchfaces.TRIP);
+                return changeToWatchfaceCommand(Watchfaces.TRIP, Animations.NONE);
             }
 
             return uberApi.cancelRideRequest(trip.request_id);
@@ -314,7 +314,7 @@ var RemoteMethods = {
                         return updateLabelsAndChangeWatchface(Watchfaces.RECEIPT, {
                             0: [Icons.PIN, locationName].join(' '),
                             1: [Icons.PRICE, receipt.total_charged].join(' ')
-                        });
+                        }, { instant: true });
                     });
                 });
             }
@@ -322,20 +322,20 @@ var RemoteMethods = {
             if ('processing' == trip.status) {
                 return updateLabelsAndChangeWatchface(Watchfaces.SEARCHING, {
                     1: ''
-                }, 5);
+                }, { ttl: 5, instant: true });
             } else if ('accepted' == trip.status) {
                 return updateLabelsAndChangeWatchface(Watchfaces.ARRIVING, {
                     0: [trip.vehicle.make, trip.vehicle.model].join(' '),
                     1: [Icons.MULTIPLIER, trip.surge_multiplier, 'x'].join(' '),
                     2: trip.vehicle.license_plate,
                     3: [Icons.CLOCK, trip.eta, 'MIN'].join(' ')
-                });
+                }, { instant: true });
             } else if ('arriving' == trip.status) {
                 return updateLabelsAndChangeWatchface(Watchfaces.READY, {
                     0: [Icons.PROFILE, trip.driver.name].join(' '),
                     1: [trip.vehicle.make, trip.vehicle.model].join(' '),
                     2: trip.vehicle.license_plate
-                });
+                }, { instant: true });
             } else if ('in_progress' == trip.status) {
                 return getLocationName(trip.destination).then(function(locationName) {
                     return updateLabelsAndChangeWatchface(Watchfaces.TRIP, {
@@ -343,7 +343,7 @@ var RemoteMethods = {
                         1: [Icons.PROFILE, trip.driver.name].join(' '),
                         2: [Icons.CLOCK, trip.destination.eta, 'MIN'].join(' ')
                     });
-                });
+                }, { instant: true });
             } else {
                 return changeToWatchfaceCommand(Watchfaces.COVER);
             }
@@ -391,13 +391,16 @@ function textElement(elementId, label, watchfaceId, ttl) {
     return data;
 }
 
-function updateLabelsAndChangeWatchface(watchfaceId, data, ttl) {
+function updateLabelsAndChangeWatchface(watchfaceId, data, options) {
+    var ttl = options.ttl;
+    var instant = options.instant;
     var messages = [];
     for (var elementId in data) {
         var label = data[elementId];
         messages.push(textElement(elementId, label, watchfaceId, ttl));
     }
-    messages.push(changeToWatchfaceCommand(watchfaceId));
+    var animation = instant && Animations.NONE;
+    messages.push(changeToWatchfaceCommand(watchfaceId, animation));
     return messages;
 }
 
@@ -432,14 +435,20 @@ function getLocationName(location) {
     });
 }
 
-function changeToWatchfaceCommand(watchfaceId) {
-    return {
+function changeToWatchfaceCommand(watchfaceId, animation) {
+    var data = {
         messageType: MessageTypes.COMMAND,
         command: Actions.CHANGE_WATCHFACE,
         parameters: {
             watchfaceId: watchfaceId
         }
     };
+
+    if (animation) {
+        data.parameters.animation = animation;
+    }
+
+    return data;
 }
 
 function updateLastTripIdForUser(userId, lastTripId) {
