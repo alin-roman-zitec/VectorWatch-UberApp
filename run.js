@@ -40,7 +40,8 @@ var Watchfaces = {
     COVER: 0,
     CHOOSE_LOCATION: 1,
     RETRIEVE_LOCATION: 2,
-    ESTIMATE: 3,
+    ESTIMATE_LOCATION: 3,
+    ESTIMATE_PLACE: 10,
     SEARCHING: 4,
     ARRIVING: 5,
     READY: 6,
@@ -206,18 +207,8 @@ var RemoteMethods = {
         });
     },
 
-    // Called in Watchfaces.RETIREVE_LOCATION
-    getLocationName: function(uberApi, args, state, location) {
-        if (!location) {
-            return displayError('Can\'t locate you');
-        }
-
-        return changeToWatchfaceCommand(Watchfaces.ESTIMATE);
-    },
-
-    // Called in Watchfaces.ESTIMATE
     estimate: function(uberApi, args, state, location) {
-        var estimationPromise, locationPromise;
+        var estimationPromise, locationPromise, withPlace = true;
         if (ChooseLocationOptions.HOME == args.id) {
             estimationPromise = uberApi.estimateByPlace(state.Product, Places.HOME);
             locationPromise = uberApi.getPlace(Places.HOME);
@@ -228,6 +219,7 @@ var RemoteMethods = {
             if (!location) {
                 return displayError('Can\'t locate you');
             }
+            withPlace = false;
             estimationPromise = uberApi.estimateByLocation(state.Product, location);
             locationPromise = getLocationName(location).then(function(locationName) { return { address: locationName }; });
         }
@@ -242,11 +234,22 @@ var RemoteMethods = {
             //var multiplier = [Math.floor(surge), '.', Math.floor((surge * 10) % 10)].join('');
             var multiplier = '1.0';
 
-            return [
-                textElement(0, location.address),
-                textElement(1, [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' ')),
-                textElement(2, [Icons.MULTIPLIER, multiplier, 'x'].join(' '))
-            ];
+            if (withPlace) {
+                return [
+                    textElement(0, location.address, Watchfaces.ESTIMATE_PLACE, -2),
+                    textElement(1, [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '), Watchfaces.ESTIMATE_PLACE, -2),
+                    textElement(2, [Icons.MULTIPLIER, multiplier, 'x'].join(' '), Watchfaces.ESTIMATE_PLACE, -2)
+                ];
+            }
+
+            var data = updateLabelsAndChangeWatchface(Watchfaces.ESTIMATE_LOCATION, {
+                0: location.address,
+                1: [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '),
+                2: [Icons.MULTIPLIER, multiplier, 'x'].join(' ')
+            });
+
+            data.push(textElement(0, '', Watchfaces.RETRIEVE_LOCATION, -2));
+            return data;
         });
     },
 
