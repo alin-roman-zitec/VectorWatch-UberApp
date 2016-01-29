@@ -207,16 +207,6 @@ var RemoteMethods = {
         });
     },
 
-    // Called in Watchfaces.RETIREVE_LOCATION
-    getLocationName: function(uberApi, args, state, location) {
-        if (!location) {
-            return displayError('Can\'t locate you');
-        }
-
-        return changeToWatchfaceCommand(Watchfaces.ESTIMATE);
-    },
-
-    // Called in Watchfaces.ESTIMATE
     estimate: function(uberApi, args, state, location) {
         var estimationPromise, locationPromise, withPlace = true;
         if (ChooseLocationOptions.HOME == args.id) {
@@ -246,16 +236,16 @@ var RemoteMethods = {
 
             if (withPlace) {
                 return [
-                    textElement(0, location.address, Watchfaces.ESTIMATE_PLACE, -2),
-                    textElement(1, [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '), Watchfaces.ESTIMATE_PLACE, -2),
-                    textElement(2, [Icons.MULTIPLIER, multiplier, 'x'].join(' '), Watchfaces.ESTIMATE_PLACE, -2)
+                    textElement(1, location.address, Watchfaces.ESTIMATE_PLACE, -2),
+                    textElement(2, [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '), Watchfaces.ESTIMATE_PLACE, -2),
+                    textElement(3, [Icons.MULTIPLIER, multiplier, 'x'].join(' '), Watchfaces.ESTIMATE_PLACE, -2)
                 ];
             }
 
             var data = updateLabelsAndChangeWatchface(Watchfaces.ESTIMATE_LOCATION, {
-                0: location.address,
-                1: [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '),
-                2: [Icons.MULTIPLIER, multiplier, 'x'].join(' ')
+                1: location.address,
+                2: [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '),
+                3: [Icons.MULTIPLIER, multiplier, 'x'].join(' ')
             });
 
             data.push(textElement(0, '', Watchfaces.RETRIEVE_LOCATION, -2));
