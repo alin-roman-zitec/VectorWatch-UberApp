@@ -207,6 +207,16 @@ var RemoteMethods = {
         });
     },
 
+    // Called in Watchfaces.RETIREVE_LOCATION
+    getLocationName: function(uberApi, args, state, location) {
+        if (!location) {
+            return displayError('Can\'t locate you');
+        }
+
+        return changeToWatchfaceCommand(Watchfaces.ESTIMATE);
+    },
+
+    // Called in Watchfaces.ESTIMATE
     estimate: function(uberApi, args, state, location) {
         var estimationPromise, locationPromise, withPlace = true;
         if (ChooseLocationOptions.HOME == args.id) {
