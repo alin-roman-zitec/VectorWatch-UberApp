@@ -195,11 +195,15 @@ var RemoteMethods = {
                 })];
 
                 if (places.home) {
-                    locations.push(selectOption(ChooseLocationOptions.HOME, 'Home: ' + places.home.address));
+                    locations.push(selectOption(ChooseLocationOptions.HOME, 'Home: ' + places.home.address, {
+                        onSelect: changeToWatchfaceAction(Watchfaces.ESTIMATE_PLACE)
+                    }));
                 }
 
                 if (places.work) {
-                    locations.push(selectOption(ChooseLocationOptions.WORK, 'Work: ' + places.work.address));
+                    locations.push(selectOption(ChooseLocationOptions.WORK, 'Work: ' + places.work.address, {
+                        onSelect: changeToWatchfaceAction(Watchfaces.ESTIMATE_PLACE)
+                    }));
                 }
 
                 return list(locations);
