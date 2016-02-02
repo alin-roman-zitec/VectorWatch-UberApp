@@ -399,6 +399,7 @@ function textElement(elementId, label, watchfaceId, ttl) {
 }
 
 function updateLabelsAndChangeWatchface(watchfaceId, data, options) {
+    options = options || {};
     var ttl = options.ttl;
     var instant = options.instant;
     var messages = [];
