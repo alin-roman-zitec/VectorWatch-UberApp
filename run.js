@@ -295,7 +295,7 @@ var RemoteMethods = {
                 return changeToWatchfaceCommand(Watchfaces.TRIP, Animations.NONE);
             }
 
-            return uberApi.cancelRideRequest(trip.request_id);
+            return uberApi.cancelTrip(trip.request_id);
         }).then(function() {
             return displayError('Trip canceled');
         });
