@@ -330,4 +330,8 @@ UberApi.prototype.getTripDetails = function(tripId) {
     return this.get('/v1/requests/' + tripId);
 };
 
+UberApi.prototype.getProductDetails = function(productId) {
+    return this.get('/v1/products/' + productId);
+};
+
 module.exports = UberApi;

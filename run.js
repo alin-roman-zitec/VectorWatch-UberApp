@@ -102,6 +102,7 @@ var vectorStream = vectorWatch.createStreamNode({
 
         callbackUrl: 'https://vectorwatch-proxy.azurewebsites.net/uber-app/oauth_callback',
         accessTokenUrl: 'https://login.uber.com/oauth/v2/token?grant_type=authorization_code',
+        grantType: 'authorization_code',
 
         authorizeUrl: 'https://login.uber.com/oauth/v2/authorize?response_type=code&scope=request history places all_trips request_receipt profile'
     },
@@ -227,8 +228,9 @@ var RemoteMethods = {
             estimationPromise = uberApi.estimateByLocation(state.Product, location);
             locationPromise = getLocationName(location).then(function(locationName) { return { address: locationName }; });
         }
+        var productPromise = uberApi.getProductDetails(state.Product);
 
-        return Promise.join(estimationPromise, locationPromise).spread(function(estimation, location) {
+        return Promise.join(estimationPromise, locationPromise, productPromise).spread(function(estimation, location, product) {
             if (estimation.price.surge_multiplier > 1) {
                 return displayError('Surge is enabled');
             }
@@ -249,7 +251,8 @@ var RemoteMethods = {
             var data = updateLabelsAndChangeWatchface(Watchfaces.ESTIMATE_LOCATION, {
                 1: location.address,
                 2: [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '),
-                3: [Icons.MULTIPLIER, multiplier, 'x'].join(' ')
+                3: [Icons.MULTIPLIER, multiplier, 'x'].join(' '),
+                4: 'Request ' + product.display_name
             });
 
             data.push(textElement(0, '', Watchfaces.RETRIEVE_LOCATION, -2));
@@ -286,7 +289,7 @@ var RemoteMethods = {
     },
 
     cancelRideRequest: function(uberApi) {
-        uberApi.getCurrentTrip().then(function(trip) {
+        return uberApi.getCurrentTrip().then(function(trip) {
             if (!trip) {
                 return;
             }
@@ -295,9 +298,9 @@ var RemoteMethods = {
                 return changeToWatchfaceCommand(Watchfaces.TRIP, Animations.NONE);
             }
 
-            return uberApi.cancelTrip(trip.request_id);
-        }).then(function() {
-            return displayError('Trip canceled');
+            return uberApi.cancelTrip(trip.request_id).then(function() {
+                return displayError('Trip canceled');
+            });
         });
     },
 
@@ -404,6 +407,7 @@ function updateLabelsAndChangeWatchface(watchfaceId, data, options) {
     var instant = options.instant;
     var messages = [];
     for (var elementId in data) {
+        elementId = parseInt(elementId);
         var label = data[elementId];
         messages.push(textElement(elementId, label, watchfaceId, ttl));
     }
