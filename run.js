@@ -213,7 +213,10 @@ var RemoteMethods = {
             locationPromise = uberApi.getPlace(Places.WORK);
         } else {
             if (!location) {
-                return displayError('Can\'t locate you');
+                return combine(
+                    displayError('Can\'t locate you'),
+                    textElement(0, '', Watchfaces.RETRIEVE_LOCATION, TTL.Refresh)
+                );
             }
             withPlace = false;
             estimationPromise = uberApi.estimateByLocation(state.Product, location);
@@ -223,7 +226,11 @@ var RemoteMethods = {
 
         return Promise.join(estimationPromise, locationPromise, productPromise).spread(function(estimation, location, product) {
             if (estimation.price.surge_multiplier > 1) {
-                return displayError('Surge is enabled');
+                return combine(
+                    displayError('Surge is enabled'),
+                    textElement(0, '', Watchfaces.RETRIEVE_LOCATION, TTL.Refresh),
+                    textElement(1, '', Watchfaces.ESTIMATE_PLACE, TTL.Refresh)
+                );
             }
 
             // we could use this code to format the multiplier nicely, but we can't have any multiplier but 1.0
@@ -233,10 +240,11 @@ var RemoteMethods = {
 
             if (withPlace) {
                 return [
-                    textElement(1, location.address, Watchfaces.ESTIMATE_PLACE, -2),
-                    textElement(2, [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '), Watchfaces.ESTIMATE_PLACE, -2),
-                    textElement(3, [Icons.MULTIPLIER, multiplier, 'x'].join(' '), Watchfaces.ESTIMATE_PLACE, -2),
-                    textElement(4, 'Request ' + product.display_name, Watchfaces.ESTIMATE_PLACE, -2)
+                    textElement(1, '', Watchfaces.ESTIMATE_PLACE, TTL.Refresh),
+                    textElement(2, location.address, Watchfaces.ESTIMATE_PLACE, TTL.NoExpire),
+                    textElement(3, [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '), Watchfaces.ESTIMATE_PLACE, TTL.NoExpire),
+                    textElement(4, [Icons.MULTIPLIER, multiplier, 'x'].join(' '), Watchfaces.ESTIMATE_PLACE, TTL.NoExpire),
+                    textElement(5, 'Request ' + product.display_name, Watchfaces.ESTIMATE_PLACE, TTL.NoExpire)
                 ];
             }
 
@@ -247,7 +255,7 @@ var RemoteMethods = {
                 4: 'Request ' + product.display_name
             });
 
-            data.push(textElement(0, '', Watchfaces.RETRIEVE_LOCATION, -2));
+            data.push(textElement(0, '', Watchfaces.RETRIEVE_LOCATION, TTL.Refresh));
             return data;
         });
     },
@@ -538,7 +546,14 @@ function getLocationName(location) {
     return googleApi.searchPlace(location, 10, {
         types: 'route'
     }).then(function(places) {
-        return places && places[0] && places[0].name || 'Unknown place.';
+        var place = places && places[0];
+        if (!place) {
+            return 'Unknown place.';
+        }
+
+        return googleApi.getPlaceDetails(place.place_id).then(function(place) {
+            return place.name;
+        });
     });
 }
 

@@ -46,6 +46,15 @@ GoogleApi.prototype.searchPlace = function(location, radius, params) {
     });
 };
 
+GoogleApi.prototype.getPlaceDetails = function(placeId) {
+    return this.get(this.getEndpoint('/place/details/json', {
+        key: this.apiKey,
+        placeid: placeId
+    })).then(function(data) {
+        return data.result;
+    });
+};
+
 GoogleApi.prototype.getEndpoint = function(path, params) {
     var endpoint = 'https://maps.googleapis.com/maps/api/' + path.replace(/^\/+/, '');
     if (!params) {
