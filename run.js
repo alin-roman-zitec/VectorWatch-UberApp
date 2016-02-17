@@ -95,7 +95,7 @@ var vectorStream = vectorWatch.createStreamNode({
         accessTokenUrl: 'https://login.uber.com/oauth/v2/token',
         grantType: 'authorization_code',
 
-        authorizeUrl: 'https://login.uber.com/oauth/v2/authorize?response_type=code&scope=request history places all_trips request_receipt profile'
+        authorizeUrl: 'https://login.uber.com/oauth/v2/authorize?response_type=code&scope=request history places profile'
     },
 
     database: {
@@ -155,6 +155,11 @@ var callMethod = function(methodName, args, authTokens, state, location) {
 
     return Promise.resolve().then(function() {
         var uberApi = new UberApi(authTokens.access_token);
+
+        if (process.env.NODE_ENV === 'production' && process.env.CONFIRM_PROD === 'YES') {
+            uberApi.sandbox = false;
+        }
+
         return RemoteMethods[methodName].call(null, uberApi, args, state, location);
     });
 };
