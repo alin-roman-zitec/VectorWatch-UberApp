@@ -320,7 +320,7 @@ UberApi.prototype.requestRideAtLocation = function(productId, location) {
 };
 
 UberApi.prototype.cancelTrip = function(rideId) {
-    return this.delete('/v1/requests/rideId', {});
+    return this.delete('/v1/requests/' + rideId, {});
 };
 
 UberApi.prototype.getProfile = function() {
