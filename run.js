@@ -100,7 +100,7 @@ var vectorStream = vectorWatch.createStreamNode({
         accessTokenUrl: 'https://login.uber.com/oauth/v2/token',
         grantType: 'authorization_code',
 
-        authorizeUrl: 'https://login.uber.com/oauth/v2/authorize?response_type=code&scope=request history places profile'
+        authorizeUrl: 'https://login.uber.com/oauth/v2/authorize?response_type=code&scope=request history places profile all_trips'
     },
 
     database: {
