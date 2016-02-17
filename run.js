@@ -6,6 +6,10 @@ var GoogleApi = require('./GoogleApi.js');
 
 var googleApi = new GoogleApi(process.env.GOOGLE_API_KEY);
 
+if (process.env.NODE_ENV === 'production' && process.env.CONFIRM_PROD === 'YES') {
+    UberApi.sandbox = false;
+}
+
 var connection = mysql.createPool({
     connectionLimit: 10,
     host: 'localhost',
@@ -156,11 +160,6 @@ var callMethod = function(methodName, args, authTokens, state, location) {
 
     return Promise.resolve().then(function() {
         var uberApi = new UberApi(authTokens.access_token);
-
-        if (process.env.NODE_ENV === 'production' && process.env.CONFIRM_PROD === 'YES') {
-            uberApi.sandbox = false;
-        }
-
         return RemoteMethods[methodName].call(null, uberApi, args, state, location);
     });
 };
