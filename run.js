@@ -392,7 +392,7 @@ var UpdatesHandlers = {
             textElement(2, [Icons.CLOCK, trip.eta, 'MIN'].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
             textElement(3, [Icons.MULTIPLIER, trip.surge_multiplier, 'x'].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
             textElement(4, [trip.vehicle.make, trip.vehicle.model].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
-            textElement(5, trip.vehicle.license_plate, Watchfaces.ARRIVING, TTL.NoExpire)
+            textElement(5, [Icons.PROFILE, trip.driver.name].join(' '), Watchfaces.ARRIVING, TTL.NoExpire)
         ];
     },
     ready: function(trip) {
