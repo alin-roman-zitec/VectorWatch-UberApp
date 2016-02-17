@@ -22,7 +22,7 @@ var ChooseLocationOptions = {
 };
 
 var TTL = {
-    TripStatus: 15,
+    TripStatus: 30,
     NoExpire: -1,
     Refresh: -2
 };
@@ -38,7 +38,8 @@ var Watchfaces = {
     READY: 6,
     TRIP: 7,
     RECEIPT: 8,
-    ERROR: 9
+    ERROR: 9,
+    LOADING_ESTIMATE_PLACE: 12
 };
 
 var MessageTypes = {
@@ -193,13 +194,13 @@ var RemoteMethods = {
 
                 if (places.home) {
                     locations.push(selectOption(ChooseLocationOptions.HOME, 'Home: ' + places.home.address, {
-                        onSelect: changeToWatchfaceAction(Watchfaces.ESTIMATE_PLACE)
+                        onSelect: changeToWatchfaceAction(Watchfaces.LOADING_ESTIMATE_PLACE)
                     }));
                 }
 
                 if (places.work) {
                     locations.push(selectOption(ChooseLocationOptions.WORK, 'Work: ' + places.work.address, {
-                        onSelect: changeToWatchfaceAction(Watchfaces.ESTIMATE_PLACE)
+                        onSelect: changeToWatchfaceAction(Watchfaces.LOADING_ESTIMATE_PLACE)
                     }));
                 }
 
@@ -244,13 +245,14 @@ var RemoteMethods = {
             var multiplier = '1.0';
 
             if (withPlace) {
-                return [
-                    textElement(1, '', Watchfaces.ESTIMATE_PLACE, TTL.Refresh),
-                    textElement(2, location.address, Watchfaces.ESTIMATE_PLACE, TTL.NoExpire),
-                    textElement(3, [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '), Watchfaces.ESTIMATE_PLACE, TTL.NoExpire),
-                    textElement(4, [Icons.MULTIPLIER, multiplier, 'x'].join(' '), Watchfaces.ESTIMATE_PLACE, TTL.NoExpire),
-                    textElement(5, 'Request ' + product.display_name, Watchfaces.ESTIMATE_PLACE, TTL.NoExpire)
-                ];
+                var data = updateLabelsAndChangeWatchface(Watchfaces.ESTIMATE_PLACE, {
+                    1: location.address,
+                    2: [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '),
+                    3: [Icons.MULTIPLIER, multiplier, 'x'].join(' '),
+                    4: 'Request ' + product.display_name
+                });
+                data.push(textElement(1, '', Watchfaces.LOADING_ESTIMATE_PLACE, TTL.Refresh));
+                return data;
             }
 
             var data = updateLabelsAndChangeWatchface(Watchfaces.ESTIMATE_LOCATION, {
