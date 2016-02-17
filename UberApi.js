@@ -164,12 +164,7 @@ UberApi.prototype.delete = function(path, data) {
         followAllRedirects: true,
         body: data
     }, function(err, res, body) {
-        if (err) {
-            console.log('DELETE', path, 'failed with message:', err.message);
-        }
         if (err) return future.reject(err);
-
-        console.log('DELETE', path, 'returned with status code', res.statusCode, res.statusMessage);
 
         if (res.statusCode == 429) {
             return future.reject(new UberApi.RateLimitError('Rate limit reached.'));
