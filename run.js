@@ -1,14 +1,35 @@
-var vectorWatch = require('stream-dev-tools');
 var Promise = require('bluebird');
 var mysql = require('mysql');
 var UberApi = require('./UberApi.js');
-var GoogleApi = require('./GoogleApi.js');
-
-var googleApi = new GoogleApi(process.env.GOOGLE_API_KEY);
-
 if (process.env.NODE_ENV === 'production' && process.env.CONFIRM_PROD === 'YES') {
     UberApi.sandbox = false;
 }
+var GoogleApi = require('./GoogleApi.js');
+var VectorWatch = require('vectorwatch-sdk');
+var OAuth2Provider = require('vectorwatch-authprovider-oauth2');
+var FileSystemStorageProvider = require('vectorwatch-storageprovider-filesystem');
+
+var vectorWatch = new VectorWatch({
+    streamUID: process.env.STREAM_UID,
+    token: process.env.VECTOR_TOKEN
+});
+
+var storageProvider = new FileSystemStorageProvider('data');
+
+var authProvider = new OAuth2Provider(storageProvider, {
+    clientId: process.env.UBER_KEY,
+    clientSecret: process.env.UBER_SECRET,
+
+    callbackUrl: 'https://vectorwatch-proxy.azurewebsites.net/uber-app/oauth_callback',
+    accessTokenUrl: 'https://login.uber.com/oauth/v2/token',
+    grantType: 'authorization_code',
+
+    authorizeUrl: 'https://login.uber.com/oauth/v2/authorize?response_type=code&scope=request history places profile all_trips request_receipt'
+});
+vectorWatch.setStorageProvider(storageProvider);
+vectorWatch.setAuthProvider(authProvider);
+
+var googleApi = new GoogleApi(process.env.GOOGLE_API_KEY);
 
 var connection = mysql.createPool({
     connectionLimit: 10,
@@ -85,89 +106,52 @@ var Icons = {
 };
 
 
-var vectorStream = vectorWatch.createStreamNode({
-    streamUID: process.env.STREAM_UID,
-    token: process.env.VECTOR_TOKEN,
 
-    auth: {
-        protocol: 'OAuth',
-        version: '2.0',
-
-        clientId: process.env.UBER_KEY,
-        clientSecret: process.env.UBER_SECRET,
-
-        callbackUrl: 'https://vectorwatch-proxy.azurewebsites.net/uber-app/oauth_callback',
-        accessTokenUrl: 'https://login.uber.com/oauth/v2/token',
-        grantType: 'authorization_code',
-
-        authorizeUrl: 'https://login.uber.com/oauth/v2/authorize?response_type=code&scope=request history places profile all_trips request_receipt'
-    },
-
-    database: {
-        connection: connection
-    }
-});
-vectorStream.debugMode = true;
-
-vectorStream.requestConfig = function(resolve, reject, authTokens, location) {
-    if (!authTokens) return reject(new Error('Invalid auth tokens.'), 901);
-    if (!location) return reject(new Error('Invalid location.'), 400);
-
-    var api = new UberApi(authTokens.access_token);
-    api.getProductsForLocation(location).then(function(products) {
-        var send = [];
-        for (var id in products) {
-            var name = products[id];
-            send.push({
-                name: name,
-                value: id
-            });
+vectorWatch.on('config', function(event, response) {
+    event.getAuthTokensAsync().then(function(authTokens) {
+        if (!authTokens) return response.sendInvalidAuthTokens();
+        if (!event.getLocation()) {
+            response.sendBadRequestError('Invalid location.');
         }
-        return send;
-    }).then(function(products) {
-        resolve({
-            renderOptions: {
-                Product: {
-                    type: 'INPUT_LIST_STRICT',
-                    hint: 'Select the Uber product you\'d like to use.',
-                    order: 0,
-                    dataType: 'STATIC'
-                }
-            },
-            settings: {
-                Product: products
-            },
-            defaults: {
-                Product: products[0]
+
+        var api = new UberApi(authTokens.access_token);
+        api.getProductsForLocation(event.getLocation()).then(function(products) {
+            var productSetting = response.createAutocomplete('Product');
+            productSetting.setHint('Select the Uber product you\'d like to use.');
+            for (var id in products) {
+                var name = products[id];
+                productSetting.addOption(name, id);
             }
+            response.send();
+        }).catch(function(err) {
+            response.sendBadRequestError(err.message);
         });
     }).catch(function(err) {
-        reject(err);
+        response.sendInvalidAuthTokens();
     });
-};
+});
 
-vectorStream.callMethod = function(resolve, reject, methodName, args, authTokens, state, location) {
-    if (!authTokens) {
-        return reject(new Error('Invalid auth tokens.'), 901);
-    }
-    callMethod(methodName, args, authTokens, state, location).then(resolve).catch(reject);
-};
+vectorWatch.on('call', function(event, response) {
+    event.getAuthTokensAsync().then(function(authTokens) {
+        if (!authTokens) return response.sendInvalidAuthTokens();
 
-var callMethod = function(methodName, args, authTokens, state, location) {
-    if (!RemoteMethods[methodName]) {
-        return Promise.reject(new Error('Invalid method name.'));
-    }
+        var methodName = event.getMethod();
+        if (!RemoteMethods[methodName]) {
+            return response.sendBadRequestError('Invalid method name.');
+        }
 
-    return Promise.resolve().then(function() {
         var uberApi = new UberApi(authTokens.access_token);
-        return RemoteMethods[methodName].call(null, uberApi, args, state, location);
+        RemoteMethods[methodName].call(null, event, response, uberApi);
+    }).catch(function(err) {
+        response.sendInvalidAuthTokens();
     });
-};
+});
 
 var RemoteMethods = {
-    // Called in Watchfaces.CHOOSE_LOCATION
-    loadChooseLocation: function(uberApi) {
-        return uberApi.getCurrentTrip().then(function(trip) {
+    loadChooseLocation: function(event, response, uberApi) {
+        var list = response.createListData(0).setTTL(VectorWatch.TTL.ExpireOnWatchfaceEnter);
+
+        uberApi.getCurrentTrip().then(function(trip) {
             if (trip) {
                 return uberApi.getProfile().then(function(profile) {
                     updateLastTripIdForUser(profile.uuid, trip.request_id).then(function() {
@@ -175,67 +159,80 @@ var RemoteMethods = {
                     });
 
                     if (trip.status == 'processing') {
-                        return [list([], -2), changeToWatchfaceCommand(Watchfaces.SEARCHING)];
+                        response.createChangeWatchfaceCommand(Watchfaces.SEARCHING);
                     } else if (trip.status == 'accepted') {
-                        return [list([], -2), changeToWatchfaceCommand(Watchfaces.ARRIVING)];
+                        response.createChangeWatchfaceCommand(Watchfaces.ARRIVING);
                     } else if (trip.status == 'arriving') {
-                        return [list([], -2), changeToWatchfaceCommand(Watchfaces.READY)];
+                        response.createChangeWatchfaceCommand(Watchfaces.READY);
                     } else {
-                        return [list([], -2), changeToWatchfaceCommand(Watchfaces.TRIP)];
+                        response.createChangeWatchfaceCommand(Watchfaces.TRIP);
                     }
+
+                    response.send();
                 });
             }
 
             return uberApi.getAvailablePlaces().then(function(places) {
-                var locations = [selectOption(ChooseLocationOptions.LOCATE, 'Locate Me', {
-                    onSelect: changeToWatchfaceAction(Watchfaces.RETRIEVE_LOCATION)
-                })];
+                list.createTextItem(ChooseLocationOptions.LOCATE, 'Locate Me')
+                    .setOnSelectAction(list.createChangeWatchfaceAction(Watchfaces.RETRIEVE_LOCATION));
 
                 if (places.home) {
-                    locations.push(selectOption(ChooseLocationOptions.HOME, 'Home: ' + places.home.address, {
-                        onSelect: changeToWatchfaceAction(Watchfaces.LOADING_ESTIMATE_PLACE)
-                    }));
+                    list.createTextItem(ChooseLocationOptions.HOME, 'Home: ' + places.home.address)
+                        .setOnSelectAction(list.createChangeWatchfaceAction(Watchfaces.LOADING_ESTIMATE_PLACE));
                 }
 
                 if (places.work) {
-                    locations.push(selectOption(ChooseLocationOptions.WORK, 'Work: ' + places.work.address, {
-                        onSelect: changeToWatchfaceAction(Watchfaces.LOADING_ESTIMATE_PLACE)
-                    }));
+                    list.createTextItem(ChooseLocationOptions.WORK, 'Work: ' + places.work.address)
+                        .setOnSelectAction(list.createChangeWatchfaceAction(Watchfaces.LOADING_ESTIMATE_PLACE));
                 }
 
-                return list(locations, -2);
+                response.send();
             });
+        }).catch(function(err) {
+            response.sendBadRequestError(err.message);
         });
     },
 
-    estimate: function(uberApi, args, state, location) {
+    estimate: function(event, response, uberApi) {
+        var args = event.getArguments();
+        var state = event.getUserSettings().toObject();
+        var location = event.getLocation();
+
         var estimationPromise, locationPromise, withPlace = true;
         if (ChooseLocationOptions.HOME == args.id) {
+            response.createTextElementData(1, '')
+                .setWatchface(Watchfaces.LOADING_ESTIMATE_PLACE)
+                .setTTL(VectorWatch.TTL.ExpireOnWatchfaceEnter);
+
             estimationPromise = uberApi.estimateByPlace(state.Product, Places.HOME);
             locationPromise = uberApi.getPlace(Places.HOME);
         } else if (ChooseLocationOptions.WORK == args.id) {
+            response.createTextElementData(1, '')
+                .setWatchface(Watchfaces.LOADING_ESTIMATE_PLACE)
+                .setTTL(VectorWatch.TTL.ExpireOnWatchfaceEnter);
+
             estimationPromise = uberApi.estimateByPlace(state.Product, Places.WORK);
             locationPromise = uberApi.getPlace(Places.WORK);
         } else {
+            response.createTextElementData(0, '')
+                .setWatchface(Watchfaces.RETRIEVE_LOCATION)
+                .setTTL(VectorWatch.TTL.ExpireOnWatchfaceEnter);
+
             if (!location) {
-                return combine(
-                    displayError('Can\'t locate you'),
-                    textElement(0, '', Watchfaces.RETRIEVE_LOCATION, TTL.Refresh)
-                );
+                displayError(response, 'Can\'t locate you');
+                return response.send();
             }
+
             withPlace = false;
             estimationPromise = uberApi.estimateByLocation(state.Product, location);
             locationPromise = getLocationName(location).then(function(locationName) { return { address: locationName }; });
         }
         var productPromise = uberApi.getProductDetails(state.Product);
 
-        return Promise.join(estimationPromise, locationPromise, productPromise).spread(function(estimation, location, product) {
+        Promise.join(estimationPromise, locationPromise, productPromise).spread(function(estimation, location, product) {
             if (estimation.price.surge_multiplier > 1) {
-                return combine(
-                    displayError('Surge is enabled'),
-                    textElement(0, '', Watchfaces.RETRIEVE_LOCATION, TTL.Refresh),
-                    textElement(1, '', Watchfaces.ESTIMATE_PLACE, TTL.Refresh)
-                );
+                displayError(response, 'Surge is enabled');
+                return response.send();
             }
 
             // we could use this code to format the multiplier nicely, but we can't have any multiplier but 1.0
@@ -243,30 +240,27 @@ var RemoteMethods = {
             //var multiplier = [Math.floor(surge), '.', Math.floor((surge * 10) % 10)].join('');
             var multiplier = '1.0';
 
+            var watchface = Watchfaces.ESTIMATE_LOCATION;
             if (withPlace) {
-                var data = updateLabelsAndChangeWatchface(Watchfaces.ESTIMATE_PLACE, {
-                    1: location.address,
-                    2: [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '),
-                    3: [Icons.MULTIPLIER, multiplier, 'x'].join(' '),
-                    4: 'Request ' + product.display_name
-                });
-                data.push(textElement(1, '', Watchfaces.LOADING_ESTIMATE_PLACE, TTL.Refresh));
-                return data;
+                watchface = Watchfaces.ESTIMATE_PLACE;
             }
 
-            var data = updateLabelsAndChangeWatchface(Watchfaces.ESTIMATE_LOCATION, {
-                1: location.address,
-                2: [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' '),
-                3: [Icons.MULTIPLIER, multiplier, 'x'].join(' '),
-                4: 'Request ' + product.display_name
-            });
-
-            data.push(textElement(0, '', Watchfaces.RETRIEVE_LOCATION, TTL.Refresh));
-            return data;
+            response.createTextElementData(1, location.address).setWatchface(watchface);
+            response.createTextElementData(2, [Icons.CLOCK, estimation.pickup_estimate || '?', 'MIN'].join(' ')).setWatchface(watchface);
+            response.createTextElementData(3, [Icons.MULTIPLIER, multiplier, 'x'].join(' ')).setWatchface(watchface);
+            response.createTextElementData(4, 'Request ' + product.display_name).setWatchface(watchface);
+            response.createChangeWatchfaceCommand(watchface);
+            return response.send();
+        }).catch(function(err) {
+            response.sendBadRequestError(err.message);
         });
     },
 
-    requestRide: function(uberApi, args, state, location) {
+    requestRide: function(event, response, uberApi) {
+        var args = event.getArguments();
+        var state = event.getUserSettings().toObject();
+        var location = event.getLocation();
+
         var promise;
         if (ChooseLocationOptions.HOME == args.id) {
             promise = uberApi.requestRideAtPlace(state.Product, Places.HOME);
@@ -274,62 +268,70 @@ var RemoteMethods = {
             promise = uberApi.requestRideAtPlace(state.Product, Places.WORK);
         } else {
             if (!location) {
-                return displayError('Can\'t locate you');
+                displayError(response, 'Can\'t locate you');
+                return response.send();
             }
             promise = uberApi.requestRideAtLocation(state.Product, location);
         }
 
-        return promise.then(function(trip) {
+        promise.then(function(trip) {
             uberApi.getProfile().then(function(profile) {
                 return updateLastTripIdForUser(profile.uuid, trip.request_id);
             }).then(function() {
 
             });
 
-            return changeToWatchfaceCommand(Watchfaces.SEARCHING);
+            response.createChangeWatchfaceCommand(Watchfaces.SEARCHING);
+            response.send();
         }).catch(UberApi.NoDriversError, function() {
-            return displayError('No drivers');
+            displayError(response, 'No drivers');
+            response.send();
         }).catch(UberApi.SurgeEnabledError, function() {
-            return displayError('Surge is enabled');
+            displayError(response, 'Surge is enabled');
+            response.send();
+        }).catch(function(err) {
+            response.sendBadRequestError(err.message);
         });
     },
 
-    cancelRideRequest: function(uberApi) {
-        return uberApi.getCurrentTrip().then(function(trip) {
+    cancelRideRequest: function(event, response, uberApi) {
+        uberApi.getCurrentTrip().then(function(trip) {
             if (!trip) {
                 return;
             }
 
             if ('in_progress' == trip.status) {
-                return changeToWatchfaceCommand(Watchfaces.TRIP, {
-                    animation: Animations.NONE
-                });
+                response.createChangeWatchfaceCommand(Watchfaces.TRIP).setAnimation(VectorWatch.Animations.None);
+                return response.send();
             }
 
             return uberApi.cancelTrip(trip.request_id).then(function() {
-                return displayError('Trip canceled', '');
+                displayError(response, 'Trip canceled', '');
+                response.send();
             });
+        }).catch(function(err) {
+            response.sendBadRequestError(err.message);
         });
     },
 
-    getSearchingUpdates: function(uberApi) {
-        return handleStatusUpdates(uberApi, 'processing');
+    getSearchingUpdates: function(event, response, uberApi) {
+        return handleStatusUpdates(event, response, uberApi, 'processing');
     },
 
-    getArrivingUpdates: function(uberApi) {
-        return handleStatusUpdates(uberApi, 'accepted');
+    getArrivingUpdates: function(event, response, uberApi) {
+        return handleStatusUpdates(event, response, uberApi, 'accepted');
     },
 
-    getReadyUpdates: function(uberApi) {
-        return handleStatusUpdates(uberApi, 'arriving');
+    getReadyUpdates: function(event, response, uberApi) {
+        return handleStatusUpdates(event, response, uberApi, 'arriving');
     },
 
-    getTripUpdates: function(uberApi) {
-        return handleStatusUpdates(uberApi, 'in_progress');
+    getTripUpdates: function(event, response, uberApi) {
+        return handleStatusUpdates(event, response, uberApi, 'in_progress');
     }
 };
 
-function handleTripEnded(uberApi, clearHandler) {
+function handleTripEnded(event, response, uberApi) {
     return uberApi.getProfile().then(function(profile) {
         return getLastTripIdForUser(profile.uuid);
     }).then(function(lastTripId) {
@@ -340,7 +342,7 @@ function handleTripEnded(uberApi, clearHandler) {
         return [uberApi.getTripDetails(lastTripId), uberApi.getTripReceipt(lastTripId)];
     }).spread(function(trip, receipt) {
         if (trip.status == 'driver_canceled' || trip.status == 'rider_canceled') {
-            return displayError('Trip canceled', '', { alert: true });
+            return displayError(response, 'Trip canceled', null, true);
         }
 
         var locationPromise;
@@ -350,59 +352,60 @@ function handleTripEnded(uberApi, clearHandler) {
             locationPromise = Promise.resolve('No destination set');
         }
         return locationPromise.then(function(locationName) {
-            return updateLabelsAndChangeWatchface(Watchfaces.RECEIPT, {
-                2: [Icons.PIN, locationName].join(' '),
-                3: [Icons.PRICE, receipt.total_charged].join(' ')
-            }, { alert: true });
+            response.createTextElementData(2, [Icons.PIN, locationName].join(' ')).setWatchface(Watchfaces.RECEIPT)
+            response.createTextElementData(3, [Icons.PRICE, receipt.total_charged].join(' ')).setWatchface(Watchfaces.RECEIPT);
+            response.createChangeWatchfaceCommand(Watchfaces.RECEIPT).setAlert();
         });
     });
 }
 
-function handleTripStatusChange(trip) {
+function handleTripStatusChange(event, response, trip) {
     var data = getWatchfaceAndHandlersByStatus(trip.status);
 
-    return Promise.join(
-        data.updatesHandler(trip),
-        data.clearHandler(),
-        changeToWatchfaceCommand(data.watchfaceId, { alert: true })
-    ).spread(combine);
+    return Promise.resolve().then(function () {
+        return data.updatesHandler(event, response, trip);
+    }).then(function () {
+        return data.clearHandler(event, response);
+    }).then(function () {
+        response.createChangeWatchfaceCommand(data.watchfaceId).setAlert();
+    });
 }
 
-function handleStatusUpdates(uberApi, status) {
+function handleStatusUpdates(event, response, uberApi, status) {
     var data = getWatchfaceAndHandlersByStatus(status);
     return uberApi.getCurrentTrip().then(function(trip) {
         if (!trip) {
-            return handleTripEnded(uberApi);
+            return handleTripEnded(event, response, uberApi);
         }
 
         if (trip.status != status) {
-            return handleTripStatusChange(trip);
+            return handleTripStatusChange(event, response, trip);
         }
 
-        return data.updatesHandler(trip);
-    }).then(function(commands) {
-        return [commands, data.clearHandler()];
-    }).spread(combine);
+        return data.updatesHandler(event, response, trip);
+    }).then(function() {
+        return data.clearHandler(event, response);
+    }).then(function() {
+        response.send();
+    }).catch(function(err) {
+        response.sendBadRequestError(err.message);
+    });
 }
 
 var UpdatesHandlers = {
-    searching: function() { return []; },
-    arriving: function(trip) {
-        return [
-            textElement(2, [Icons.CLOCK, trip.eta, 'MIN'].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
-            textElement(3, [Icons.MULTIPLIER, trip.surge_multiplier, 'x'].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
-            textElement(4, [trip.vehicle.make, trip.vehicle.model].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
-            textElement(5, [Icons.PROFILE, trip.driver.name].join(' '), Watchfaces.ARRIVING, TTL.NoExpire)
-        ];
+    searching: function() { },
+    arriving: function(event, response, trip) {
+        response.createTextElementData(2, [Icons.CLOCK, trip.eta, 'MIN'].join(' ')).setWatchface(Watchfaces.ARRIVING);
+        response.createTextElementData(3, [Icons.MULTIPLIER, trip.surge_multiplier, 'x'].join(' ')).setWatchface(Watchfaces.ARRIVING);
+        response.createTextElementData(4, [trip.vehicle.make, trip.vehicle.model].join(' ')).setWatchface(Watchfaces.ARRIVING);
+        response.createTextElementData(5, [Icons.PROFILE, trip.driver.name].join(' ')).setWatchface(Watchfaces.ARRIVING);
     },
-    ready: function(trip) {
-        return [
-            textElement(3, [Icons.PROFILE, trip.driver.name].join(' '), Watchfaces.READY, TTL.NoExpire),
-            textElement(4, [trip.vehicle.make, trip.vehicle.model].join(' '), Watchfaces.READY, TTL.NoExpire),
-            textElement(5, trip.vehicle.license_plate, Watchfaces.READY, TTL.NoExpire)
-        ];
+    ready: function(event, response, trip) {
+        response.createTextElementData(3, [Icons.PROFILE, trip.driver.name].join(' ')).setWatchface(Watchfaces.READY);
+        response.createTextElementData(4, [trip.vehicle.make, trip.vehicle.model].join(' ')).setWatchface(Watchfaces.READY);
+        response.createTextElementData(5, trip.vehicle.license_plate).setWatchface(Watchfaces.READY);
     },
-    trip: function(trip) {
+    trip: function(event, response, trip) {
         var locationPromise;
         if (trip.destination) {
             locationPromise = getLocationName(trip.destination);
@@ -411,28 +414,26 @@ var UpdatesHandlers = {
         }
 
         return locationPromise.then(function (locationName) {
-            return [
-                textElement(3, [Icons.PIN, locationName].join(' '), Watchfaces.TRIP, TTL.NoExpire),
-                textElement(4, [Icons.PROFILE, trip.driver.name].join(' '), Watchfaces.TRIP, TTL.NoExpire),
-                textElement(5, [Icons.CLOCK, trip.destination.eta, 'MIN'].join(' '), Watchfaces.TRIP, TTL.NoExpire)
-            ];
+            response.createTextElementData(3, [Icons.PIN, locationName].join(' ')).setWatchface(Watchfaces.TRIP);
+            response.createTextElementData(4, [Icons.PROFILE, trip.driver.name].join(' ')).setWatchface(Watchfaces.TRIP);
+            response.createTextElementData(5, [Icons.CLOCK, trip.destination.eta, 'MIN'].join(' ')).setWatchface(Watchfaces.TRIP);
         });
     }
 };
 
 var ClearHandlers = {
-    empty: function() { return []; },
-    searching: function() {
-        return textElement(1, '', Watchfaces.SEARCHING, TTL.TripStatus);
+    empty: function() { },
+    searching: function(event, response) {
+        response.createTextElementData(1, '').setWatchface(Watchfaces.SEARCHING).setTTL(TTL.TripStatus);
     },
-    arriving: function() {
-        return textElement(1, '', Watchfaces.ARRIVING, TTL.TripStatus);
+    arriving: function(event, response) {
+        response.createTextElementData(1, '').setWatchface(Watchfaces.ARRIVING).setTTL(TTL.TripStatus);
     },
-    ready: function() {
-        return textElement(1, '', Watchfaces.READY, TTL.TripStatus);
+    ready: function(event, response) {
+        response.createTextElementData(1, '').setWatchface(Watchfaces.READY).setTTL(TTL.TripStatus);
     },
-    trip: function() {
-        return textElement(1, '', Watchfaces.TRIP, TTL.TripStatus);
+    trip: function(event, response) {
+        response.createTextElementData(1, '').setWatchface(Watchfaces.TRIP).setTTL(TTL.TripStatus);
     }
 };
 
@@ -462,90 +463,15 @@ function getWatchfaceAndHandlersByStatus(status) {
     };
 }
 
-function list(items, ttl) {
-    var data = {
-        type: 'list',
-        items: items
-    };
-    if (ttl) data.ttl = ttl;
-    return data;
-}
-
-function selectOption(optionId, label, attribs) {
-    var element = {
-        type: 'text',
-        id: optionId,
-        label: label
-    };
-    attribs = attribs || {};
-    for (var attrib in attribs) {
-        if (attribs.hasOwnProperty(attrib)) {
-            element[attrib] = attribs[attrib];
-        }
-    }
-    return element;
-}
-
-function textElement(elementId, label, watchfaceId, ttl) {
-    var data = {
-        type: 'text_element',
-        elementId: elementId,
-        value: label || ''
-    };
-
-    if (watchfaceId) {
-        data.watchfaceId = watchfaceId;
-    }
-
-    if (ttl) {
-        data.ttl = ttl;
-    }
-
-    return data;
-}
-
-function combine() {
-    return Array.prototype.concat.apply([], arguments);
-}
-
-function updateLabelsAndChangeWatchface(watchfaceId, data, options) {
-    options = options || {};
-    var messages = [];
-    for (var elementId in data) {
-        elementId = parseInt(elementId);
-        var label = data[elementId];
-        messages.push(textElement(elementId, label, watchfaceId, options.ttl));
-    }
-
-    messages.push(changeToWatchfaceCommand(watchfaceId, options));
-    return messages;
-}
-
-function displayError(message, title, options) {
-    var data = {
-        2: message
-    };
+function displayError(response, message, title, alert) {
+    response.createTextElementData(2, message).setWatchface(Watchfaces.ERROR);
     if (title != null) {
-        data['1'] = title;
+        response.createTextElementData(1, title).setWatchface(Watchfaces.ERROR);
     }
-    return updateLabelsAndChangeWatchface(Watchfaces.ERROR, data, options);
-}
-
-function bitmapElement(elementId, resourceId) {
-    return {
-        type: 'bitmap_element',
-        elementId: elementId,
-        resourceId: resourceId
-    };
-}
-
-function changeToWatchfaceAction(watchfaceId, animation) {
-    return {
-        action: Actions.CHANGE_WATCHFACE,
-        animation: animation || Animations.LEFT_OUT,
-        showNotifications: false,
-        changeWatchfaceIndex: watchfaceId
-    };
+    var changeWatchfaceCommand = response.createChangeWatchfaceCommand(Watchfaces.ERROR);
+    if (alert) {
+        changeWatchfaceCommand.setAlert();
+    }
 }
 
 function getLocationName(location) {
@@ -563,32 +489,6 @@ function getLocationName(location) {
     });
 }
 
-function changeToWatchfaceCommand(watchfaceId, options) {
-    options = options || {};
-
-    var data = {
-        messageType: MessageTypes.COMMAND,
-        command: Actions.CHANGE_WATCHFACE,
-        parameters: {
-            watchfaceId: watchfaceId
-        }
-    };
-
-    if (options.animation) {
-        data.parameters.animation = options.animation;
-    }
-
-    if (options.instant) {
-        data.parameters.animation = Animations.NONE;
-    }
-
-    if (options.alert) {
-        data.parameters.alert = true;
-    }
-
-    return data;
-}
-
 function updateLastTripIdForUser(userId, lastTripId) {
     return connection.queryAsync('INSERT INTO LastTripId (userId, lastTripId) VALUES (?, ?) ON DUPLICATE KEY UPDATE lastTripId = VALUES(lastTripId)', [userId, lastTripId]);
 }
@@ -599,7 +499,6 @@ function getLastTripIdForUser(userId) {
     });
 }
 
-
-vectorStream.startStreamServer(3090, function() {
+vectorWatch.createServer(3090, function() {
     console.log('Uber App server started.');
 });
