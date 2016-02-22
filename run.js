@@ -111,10 +111,17 @@ vectorStream.debugMode = true;
 
 vectorStream.requestConfig = function(resolve, reject, authTokens, location) {
     if (!authTokens) return reject(new Error('Invalid auth tokens.'), 901);
-    if (!location) return reject(new Error('Invalid location.'), 400);
+    //if (!location) return reject(new Error('Invalid location.'), 400);
 
     var api = new UberApi(authTokens.access_token);
-    api.getProductsForLocation(location).then(function(products) {
+    var productsPromise = null;
+    if (!location) {
+        productsPromise = Promise.resolve({});
+    } else {
+        productsPromise = api.getProductsForLocation(location);
+    }
+
+    productsPromise.then(function(products) {
         var send = [];
         for (var id in products) {
             var name = products[id];
@@ -263,6 +270,12 @@ var RemoteMethods = {
 
             data.push(textElement(0, '', Watchfaces.RETRIEVE_LOCATION, TTL.Refresh));
             return data;
+        }).catch(UberApi.InvalidProductError, function(err) {
+            return combine(
+                displayError('Please enable location and tap on the Uber app in the mobile watch maker'),
+                textElement(0, '', Watchfaces.RETRIEVE_LOCATION, TTL.Refresh),
+                textElement(1, '', Watchfaces.LOADING_ESTIMATE_PLACE, TTL.Refresh)
+            );
         });
     },
 
@@ -291,6 +304,8 @@ var RemoteMethods = {
             return displayError('No drivers');
         }).catch(UberApi.SurgeEnabledError, function() {
             return displayError('Surge is enabled');
+        }).catch(UberApi.InvalidProductError, function(err) {
+            return displayError('Please enable location and tap on the Uber app in the mobile watch maker');
         });
     },
 
@@ -398,14 +413,14 @@ var UpdatesHandlers = {
             textElement(3, [Icons.MULTIPLIER, multiplier, 'x'].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
             textElement(4, [trip.vehicle.make, trip.vehicle.model].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
             textElement(showPlate ? 6 : 5, [Icons.PROFILE, trip.driver.name].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
-            textElement(showPlate ? 5 : 6, trip.vehicle.license_plate, Watchfaces.ARRIVING, TTL.NoExpire)
+            textElement(showPlate ? 5 : 6, trip.vehicle.license_plate.toUpperCase(), Watchfaces.ARRIVING, TTL.NoExpire)
         ];
     },
     ready: function(trip) {
         return [
             textElement(3, [Icons.PROFILE, trip.driver.name].join(' '), Watchfaces.READY, TTL.NoExpire),
             textElement(4, [trip.vehicle.make, trip.vehicle.model].join(' '), Watchfaces.READY, TTL.NoExpire),
-            textElement(5, trip.vehicle.license_plate, Watchfaces.READY, TTL.NoExpire)
+            textElement(5, trip.vehicle.license_plate.toUpperCase(), Watchfaces.READY, TTL.NoExpire)
         ];
     },
     trip: function(trip) {
