@@ -234,7 +234,7 @@ var RemoteMethods = {
                 return combine(
                     displayError('Surge is enabled'),
                     textElement(0, '', Watchfaces.RETRIEVE_LOCATION, TTL.Refresh),
-                    textElement(1, '', Watchfaces.ESTIMATE_PLACE, TTL.Refresh)
+                    textElement(1, '', Watchfaces.LOADING_ESTIMATE_PLACE, TTL.Refresh)
                 );
             }
 
@@ -388,11 +388,17 @@ function handleStatusUpdates(uberApi, status) {
 var UpdatesHandlers = {
     searching: function() { return []; },
     arriving: function(trip) {
+        var surge = trip.surge_multiplier;
+        var multiplier = [Math.floor(surge), '.', Math.floor((surge * 10) % 10)].join('');
+
+        var showPlate = !!trip.vehicle.license_plate;
+
         return [
             textElement(2, [Icons.CLOCK, trip.eta, 'MIN'].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
-            textElement(3, [Icons.MULTIPLIER, trip.surge_multiplier, 'x'].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
+            textElement(3, [Icons.MULTIPLIER, multiplier, 'x'].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
             textElement(4, [trip.vehicle.make, trip.vehicle.model].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
-            textElement(5, [Icons.PROFILE, trip.driver.name].join(' '), Watchfaces.ARRIVING, TTL.NoExpire)
+            textElement(showPlate ? 6 : 5, [Icons.PROFILE, trip.driver.name].join(' '), Watchfaces.ARRIVING, TTL.NoExpire),
+            textElement(showPlate ? 5 : 6, trip.vehicle.license_plate, Watchfaces.ARRIVING, TTL.NoExpire)
         ];
     },
     ready: function(trip) {
