@@ -352,23 +352,27 @@ function handleTripEnded(uberApi, clearHandler) {
             // how did he even got here?
         }
 
-        return [uberApi.getTripDetails(lastTripId), uberApi.getTripReceipt(lastTripId)];
-    }).spread(function(trip, receipt) {
+        return uberApi.getTripDetails(lastTripId);
+    }).then(function(trip) {
         if (trip.status == 'driver_canceled' || trip.status == 'rider_canceled') {
-            return displayError('Trip canceled', '', { alert: true });
+            return displayError('Trip canceled', '', {alert: true});
         }
 
-        var locationPromise;
-        if (trip.destination) {
-            locationPromise = getLocationName(trip.destination);
-        } else {
-            locationPromise = Promise.resolve('No destination set');
-        }
-        return locationPromise.then(function(locationName) {
-            return updateLabelsAndChangeWatchface(Watchfaces.RECEIPT, {
-                2: [Icons.PIN, locationName].join(' '),
-                3: [Icons.PRICE, receipt.total_charged].join(' ')
-            }, { alert: true });
+        return Promise.delay(15000).then(function () {
+            return uberApi.getTripReceipt(trip.request_id);
+        }).then(function(receipt) {
+            var locationPromise;
+            if (trip.destination) {
+                locationPromise = getLocationName(trip.destination);
+            } else {
+                locationPromise = Promise.resolve('No destination set');
+            }
+            return locationPromise.then(function (locationName) {
+                return updateLabelsAndChangeWatchface(Watchfaces.RECEIPT, {
+                    2: [Icons.PIN, locationName].join(' '),
+                    3: [Icons.PRICE, receipt.total_charged].join(' ')
+                }, {alert: true});
+            });
         });
     });
 }
