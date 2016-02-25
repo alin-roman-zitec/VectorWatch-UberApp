@@ -428,18 +428,19 @@ var UpdatesHandlers = {
         ];
     },
     trip: function(trip) {
-        var locationPromise;
+        var locationPromise, eta = Icons.CLOCK + ' -';
         if (trip.destination) {
             locationPromise = getLocationName(trip.destination);
+            eta = [Icons.CLOCK, trip.destination.eta, 'MIN'].join(' ');
         } else {
-            locationPromise = Promise.resolve('No destination set');
+            locationPromise = Promise.resolve('Unknown destination');
         }
 
         return locationPromise.then(function (locationName) {
             return [
                 textElement(3, [Icons.PIN, locationName].join(' '), Watchfaces.TRIP, TTL.NoExpire),
                 textElement(4, [Icons.PROFILE, trip.driver.name].join(' '), Watchfaces.TRIP, TTL.NoExpire),
-                textElement(5, [Icons.CLOCK, trip.destination.eta, 'MIN'].join(' '), Watchfaces.TRIP, TTL.NoExpire)
+                textElement(5, eta, Watchfaces.TRIP, TTL.NoExpire)
             ];
         });
     }
