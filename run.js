@@ -132,23 +132,14 @@ vectorWatch.on('config', function(event, response) {
 });
 
 vectorWatch.on('call', function(event, response) {
-    event.getAuthTokensAsync().then(function(authTokens) {
-        if (!authTokens) return response.sendInvalidAuthTokens();
-
-        var methodName = event.getMethod();
-        if (!RemoteMethods[methodName]) {
-            return response.sendBadRequestError('Invalid method name.');
-        }
-
-        var uberApi = new UberApi(authTokens.access_token);
-        RemoteMethods[methodName].call(null, event, response, uberApi);
-    }).catch(function(err) {
-        response.sendInvalidAuthTokens();
-    });
+    return response.sendBadRequestError('Invalid method name.');
 });
 
-var RemoteMethods = {
-    loadChooseLocation: function(event, response, uberApi) {
+vectorWatch.on('call:loadChooseLocation', function(event, response) {
+    event.getAuthTokensAsync().then(function(authTokens) {
+        if (!authTokens) return response.sendInvalidAuthTokens();
+        var uberApi = new UberApi(authTokens.access_token);
+
         var list = response.createListData(0).setTTL(VectorWatch.TTL.ExpireOnWatchfaceEnter);
 
         uberApi.getCurrentTrip().then(function(trip) {
@@ -191,9 +182,16 @@ var RemoteMethods = {
         }).catch(function(err) {
             response.sendBadRequestError(err.message);
         });
-    },
+    }).catch(function(err) {
+        response.sendInvalidAuthTokens();
+    });
+});
 
-    estimate: function(event, response, uberApi) {
+vectorWatch.on('call:estimate', function(event, response) {
+    event.getAuthTokensAsync().then(function(authTokens) {
+        if (!authTokens) return response.sendInvalidAuthTokens();
+        var uberApi = new UberApi(authTokens.access_token);
+
         var args = event.getArguments();
         var state = event.getUserSettings().toObject();
         var location = event.getLocation();
@@ -254,9 +252,16 @@ var RemoteMethods = {
         }).catch(function(err) {
             response.sendBadRequestError(err.message);
         });
-    },
+    }).catch(function(err) {
+        response.sendInvalidAuthTokens();
+    });
+});
 
-    requestRide: function(event, response, uberApi) {
+vectorWatch.on('call:requestRide', function(event, response) {
+    event.getAuthTokensAsync().then(function(authTokens) {
+        if (!authTokens) return response.sendInvalidAuthTokens();
+        var uberApi = new UberApi(authTokens.access_token);
+
         var args = event.getArguments();
         var state = event.getUserSettings().toObject();
         var location = event.getLocation();
@@ -292,9 +297,16 @@ var RemoteMethods = {
         }).catch(function(err) {
             response.sendBadRequestError(err.message);
         });
-    },
+    }).catch(function(err) {
+        response.sendInvalidAuthTokens();
+    });
+});
 
-    cancelRideRequest: function(event, response, uberApi) {
+vectorWatch.on('call:cancelRideRequest', function(event, response) {
+    event.getAuthTokensAsync().then(function(authTokens) {
+        if (!authTokens) return response.sendInvalidAuthTokens();
+        var uberApi = new UberApi(authTokens.access_token);
+
         uberApi.getCurrentTrip().then(function(trip) {
             if (!trip) {
                 return;
@@ -312,24 +324,55 @@ var RemoteMethods = {
         }).catch(function(err) {
             response.sendBadRequestError(err.message);
         });
-    },
+    }).catch(function(err) {
+        response.sendInvalidAuthTokens();
+    });
+});
 
-    getSearchingUpdates: function(event, response, uberApi) {
+vectorWatch.on('call:getSearchingUpdates', function(event, response) {
+    event.getAuthTokensAsync().then(function(authTokens) {
+        if (!authTokens) return response.sendInvalidAuthTokens();
+        var uberApi = new UberApi(authTokens.access_token);
+
         return handleStatusUpdates(event, response, uberApi, 'processing');
-    },
+    }).catch(function(err) {
+        response.sendInvalidAuthTokens();
+    });
+});
 
-    getArrivingUpdates: function(event, response, uberApi) {
+vectorWatch.on('call:getArrivingUpdates', function(event, response) {
+    event.getAuthTokensAsync().then(function(authTokens) {
+        if (!authTokens) return response.sendInvalidAuthTokens();
+        var uberApi = new UberApi(authTokens.access_token);
+
         return handleStatusUpdates(event, response, uberApi, 'accepted');
-    },
+    }).catch(function(err) {
+        response.sendInvalidAuthTokens();
+    });
+});
 
-    getReadyUpdates: function(event, response, uberApi) {
+vectorWatch.on('call:getReadyUpdates', function(event, response) {
+    event.getAuthTokensAsync().then(function(authTokens) {
+        if (!authTokens) return response.sendInvalidAuthTokens();
+        var uberApi = new UberApi(authTokens.access_token);
+
         return handleStatusUpdates(event, response, uberApi, 'arriving');
-    },
+    }).catch(function(err) {
+        response.sendInvalidAuthTokens();
+    });
+});
 
-    getTripUpdates: function(event, response, uberApi) {
+vectorWatch.on('call:getTripUpdates', function(event, response) {
+    event.getAuthTokensAsync().then(function(authTokens) {
+        if (!authTokens) return response.sendInvalidAuthTokens();
+        var uberApi = new UberApi(authTokens.access_token);
+
         return handleStatusUpdates(event, response, uberApi, 'in_progress');
-    }
-};
+    }).catch(function(err) {
+        response.sendInvalidAuthTokens();
+    });
+});
+
 
 function handleTripEnded(event, response, uberApi) {
     return uberApi.getProfile().then(function(profile) {
