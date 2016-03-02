@@ -385,7 +385,7 @@ function handleTripEnded(event, response, uberApi) {
         return [uberApi.getTripDetails(lastTripId), uberApi.getTripReceipt(lastTripId)];
     }).spread(function(trip, receipt) {
         if (trip.status == 'driver_canceled' || trip.status == 'rider_canceled') {
-            return displayError(response, 'Trip canceled', null, true);
+            return displayError(response, 'Trip canceled', '');
         }
 
         var locationPromise;
@@ -508,6 +508,7 @@ function getWatchfaceAndHandlersByStatus(status) {
 
 function displayError(response, message, title, alert) {
     var popup = response.createPopup(message);
+    popup.setTitle(title);
     var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.COVER);
     popup.addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction);
     popup.addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction);
