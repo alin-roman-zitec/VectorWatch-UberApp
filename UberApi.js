@@ -1,50 +1,54 @@
 var Promise = require('bluebird');
 var request = require('request');
 var url = require('url');
+var util = require('util');
 
 var UberApi = function UberApi(accessToken) {
     this.accessToken = accessToken;
 };
 
 /** ERRORS **/
+UberApi.APIError = function(error) {
+    this.innerError = error;
+    this.name = 'APIError';
+    Error.captureStackTrace(this, UberApi.APIError);
+};
+util.inherits(UberApi.APIError, Error);
+
 UberApi.RateLimitError = function(message) {
     this.message = message;
     this.name = 'RateLimitError';
     Error.captureStackTrace(this, UberApi.RateLimitError);
 };
-UberApi.RateLimitError.prototype = Object.create(Error.prototype);
-UberApi.RateLimitError.prototype.constructor = UberApi.RateLimitError;
+util.inherits(UberApi.RateLimitError, UberApi.APIError);
 
 UberApi.NoDriversError = function(message) {
     this.message = message;
     this.name = 'NoDriversError';
     Error.captureStackTrace(this, UberApi.NoDriversError);
 };
-UberApi.NoDriversError.prototype = Object.create(Error.prototype);
-UberApi.NoDriversError.prototype.constructor = UberApi.NoDriversError;
+util.inherits(UberApi.NoDriversError, UberApi.APIError);
 
 UberApi.SurgeEnabledError = function(message) {
     this.message = message;
     this.name = 'SurgeEnabledError';
     Error.captureStackTrace(this, UberApi.SurgeEnabledError);
 };
-UberApi.SurgeEnabledError.prototype = Object.create(Error.prototype);
-UberApi.SurgeEnabledError.prototype.constructor = UberApi.SurgeEnabledError;
+util.inherits(UberApi.SurgeEnabledError, UberApi.APIError);
 
 UberApi.InvalidProductError = function(message) {
     this.message = message;
     this.name = 'InvalidProductError';
     Error.captureStackTrace(this, UberApi.InvalidProductError);
 };
-UberApi.InvalidProductError.prototype = Object.create(Error.prototype);
-UberApi.InvalidProductError.prototype.constructor = UberApi.InvalidProductError;
+util.inherits(UberApi.InvalidProductError, UberApi.APIError);
 
 
 UberApi.sandbox = true;
 
 var handleResponse = function(future) {
     return function(err, res, body) {
-        if (err) return future.reject(err);
+        if (err) return future.reject(new UberApi.APIError(err));
 
         if (res.statusCode == 429) {
             return future.reject(new UberApi.RateLimitError('Rate limit reached.'));
@@ -64,7 +68,7 @@ var handleResponse = function(future) {
         }
 
         if (res.statusCode < 200 || res.statusCode >= 300) {
-            return future.reject(body);
+            return future.reject(new UberApi.APIError(body));
         }
 
         if (res.statusCode == 204) {
@@ -204,6 +208,10 @@ UberApi.prototype.getAvailablePlaces = function() {
 };
 
 UberApi.prototype.isAPIError = function(err, shouldHaveStatus, shouldHaveCode) {
+    if (err instanceof UberApi.APIError) {
+        err = err.innerError;
+    }
+
     var errors = err && err.errors || [];
     for (var i = 0; i < errors.length; ++i) {
         var errObj = errors[i] || {};

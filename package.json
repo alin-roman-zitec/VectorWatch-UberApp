@@ -9,7 +9,7 @@
     "request": "^2.67.0",
     "vectorwatch-authprovider-oauth2": "^1.0.1",
     "vectorwatch-sdk": "^1.0.0",
-    "vectorwatch-storageprovider-filesystem": "^1.0.0"
+    "vectorwatch-storageprovider-mysql": "^1.0.4"
   },
   "author": "alin.roman@zitec.com",
   "license": "ISC"

@@ -7,14 +7,24 @@ if (process.env.NODE_ENV === 'production' && process.env.CONFIRM_PROD === 'YES')
 var GoogleApi = require('./GoogleApi.js');
 var VectorWatch = require('vectorwatch-sdk');
 var OAuth2Provider = require('vectorwatch-authprovider-oauth2');
-var FileSystemStorageProvider = require('vectorwatch-storageprovider-filesystem');
+//var FileSystemStorageProvider = require('vectorwatch-storageprovider-filesystem');
+var MySQLStorageProvider = require('vectorwatch-storageprovider-mysql');
 
 var vectorWatch = new VectorWatch({
     streamUID: process.env.STREAM_UID,
     token: process.env.VECTOR_TOKEN
 });
 
-var storageProvider = new FileSystemStorageProvider('data');
+var dbSettings = {
+    connectionLimit: 10,
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    database: 'NewUberApp'
+};
+
+//var storageProvider = new FileSystemStorageProvider('data');
+var storageProvider = new MySQLStorageProvider(dbSettings);
 
 var authProvider = new OAuth2Provider(storageProvider, {
     clientId: process.env.UBER_KEY,
@@ -31,13 +41,7 @@ vectorWatch.setAuthProvider(authProvider);
 
 var googleApi = new GoogleApi(process.env.GOOGLE_API_KEY);
 
-var connection = mysql.createPool({
-    connectionLimit: 10,
-    host: 'localhost',
-    user: 'root',
-    password: '',
-    database: 'UberApp'
-});
+var connection = mysql.createPool(dbSettings);
 connection.queryAsync = Promise.promisify(connection.query);
 
 var ChooseLocationOptions = {
@@ -47,9 +51,7 @@ var ChooseLocationOptions = {
 };
 
 var TTL = {
-    TripStatus: 30,
-    NoExpire: -1,
-    Refresh: -2
+    TripStatus: 30
 };
 
 var Watchfaces = {
@@ -65,31 +67,6 @@ var Watchfaces = {
     RECEIPT: 8,
     ERROR: 9,
     LOADING_ESTIMATE_PLACE: 12
-};
-
-var MessageTypes = {
-    COMMAND: 'command',
-    ELEMENT: 'element_data'
-};
-
-var Actions = {
-    NONE: 'NONE',
-    CHANGE_TO_NEXT_WATCHFACE: 'CHANGE_TO_NEXT_WATCHFACE',
-    CHANGE_TO_PREVIOUS_WATCHFACE: 'CHANGE_TO_PREVIOUS_WATCHFACE',
-    CHANGE_WATCHFACE: 'CHANGE_WATCHFACE',
-    SEND_VALUE_TO_CLOUD: 'SEND_VALUE_TO_CLOUD'
-};
-
-var Animations = {
-    NONE: 'NONE',
-    UP_IN: 'UP_IN',
-    UP_OUT: 'UP_OUT',
-    DOWN_IN: 'DOWN_IN',
-    DOWN_OUT: 'DOWN_OUT',
-    LEFT_IN: 'LEFT_IN',
-    LEFT_OUT: 'LEFT_OUT',
-    RIGHT_IN: 'RIGHT_IN',
-    RIGHT_OUT: 'RIGHT_OUT'
 };
 
 var Places = {
@@ -186,8 +163,13 @@ vectorWatch.on('call:loadChooseLocation', function(event, response) {
 
                 response.send();
             });
+        }).catch(UberApi.APIError, function(err) {
+            uberInternalServerError(response);
+            response.send();
         }).catch(function(err) {
-            response.sendBadRequestError(err.message);
+            // todo: log this error
+            internalServerError(response);
+            response.send();
         });
     }).catch(function(err) {
         response.sendInvalidAuthTokens();
@@ -224,7 +206,13 @@ vectorWatch.on('call:estimate', function(event, response) {
                 .setTTL(VectorWatch.TTL.ExpireOnWatchfaceEnter);
 
             if (!location) {
-                displayError(response, 'Can\'t locate you');
+                var popup = response.createPopup('Cannot retrieve location');
+                var changeToChooseLocationAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
+
+                popup.setTitle('Alert')
+                    .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                    .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                    .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
                 return response.send();
             }
 
@@ -238,7 +226,15 @@ vectorWatch.on('call:estimate', function(event, response) {
 
         Promise.join(estimationPromise, locationPromise, productPromise).spread(function (estimation, location, product) {
             if (estimation.price.surge_multiplier > 1) {
-                displayError(response, 'Surge is enabled');
+                var popup = response.createPopup('Confirmation on the Uber app is required');
+                var retryAction = popup.createRefreshElementAction();
+                var changeToChooseLocationAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
+
+                popup.setTitle('Surge pricing')
+                    .setLabel('Retry')
+                    .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                    .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                    .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, retryAction);
                 return response.send();
             }
 
@@ -259,15 +255,46 @@ vectorWatch.on('call:estimate', function(event, response) {
             response.createChangeWatchfaceCommand(watchface);
             return response.send();
         }).catch(UberApi.InvalidProductError, function(err) {
-            displayError(response, 'Please enable location and tap on the Uber app in the mobile watch maker');
+            var popup = response.createPopup('Please reconfigure or reinstall the app');
+            var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.COVER);
+
+            popup.setTitle('Error')
+                .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+                .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+                .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToCoverAction);
             response.send();
-        }).catch(function (err) {
-            response.sendBadRequestError(err.message);
+        }).catch(UberApi.APIError, function(err) {
+            uberInternalServerError(response);
+            response.send();
+        }).catch(function(err) {
+            // todo: log this error
+            internalServerError(response);
+            response.send();
         });
     }).catch(function(err) {
         response.sendInvalidAuthTokens();
     });
 });
+
+function uberInternalServerError(response) {
+    var popup = response.createPopup('Uber internal server error');
+    var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.COVER);
+
+    popup.setTitle('Error')
+        .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+        .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+        .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToCoverAction);
+}
+
+function internalServerError(response) {
+    var popup = response.createPopup('Internal server error');
+    var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.COVER);
+
+    popup.setTitle('Error')
+        .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+        .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+        .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToCoverAction);
+}
 
 vectorWatch.on('call:requestRide', function(event, response) {
     event.getAuthTokensAsync().then(function(authTokens) {
@@ -285,7 +312,13 @@ vectorWatch.on('call:requestRide', function(event, response) {
             promise = uberApi.requestRideAtPlace(state.Product, Places.WORK);
         } else {
             if (!location) {
-                displayError(response, 'Can\'t locate you');
+                var popup = response.createPopup('Cannot retrieve location');
+                var changeToChooseLocationAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
+
+                popup.setTitle('Alert')
+                    .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                    .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                    .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
                 return response.send();
             }
             promise = uberApi.requestRideAtLocation(state.Product, location);
@@ -301,16 +334,41 @@ vectorWatch.on('call:requestRide', function(event, response) {
             response.createChangeWatchfaceCommand(Watchfaces.SEARCHING);
             response.send();
         }).catch(UberApi.NoDriversError, function() {
-            displayError(response, 'No drivers');
+            var popup = response.createPopup('No cars available');
+            var changeToChooseLocationAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
+
+            popup.setTitle('Alert')
+                .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
             response.send();
         }).catch(UberApi.SurgeEnabledError, function() {
-            displayError(response, 'Surge is enabled');
+            var popup = response.createPopup('Confirmation on the Uber app is required');
+            var retryAction = popup.createRefreshElementAction();
+            var changeToChooseLocationAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
+
+            popup.setTitle('Surge pricing')
+                .setLabel('Retry')
+                .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, retryAction);
             response.send();
         }).catch(UberApi.InvalidProductError, function(err) {
-            displayError(response, 'Please enable location and tap on the Uber app in the mobile watch maker');
+            var popup = response.createPopup('Please reconfigure or reinstall the app');
+            var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.COVER);
+
+            popup.setTitle('Error')
+                .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+                .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+                .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToCoverAction);
+            response.send();
+        }).catch(UberApi.APIError, function(err) {
+            uberInternalServerError(response);
             response.send();
         }).catch(function(err) {
-            response.sendBadRequestError(err.message);
+            // todo: log this error
+            internalServerError(response);
+            response.send();
         });
     }).catch(function(err) {
         response.sendInvalidAuthTokens();
@@ -333,11 +391,22 @@ vectorWatch.on('call:cancelRideRequest', function(event, response) {
             }
 
             return uberApi.cancelTrip(trip.request_id).then(function() {
-                displayError(response, 'Trip canceled', '');
-                response.send();
+                var popup = response.createPopup('Trip canceled');
+                var changeToChooseLocationAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
+
+                popup.setTitle('Alert')
+                    .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                    .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                    .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
+                return response.send();
             });
+        }).catch(UberApi.APIError, function(err) {
+            uberInternalServerError(response);
+            response.send();
         }).catch(function(err) {
-            response.sendBadRequestError(err.message);
+            // todo: log this error
+            internalServerError(response);
+            response.send();
         });
     }).catch(function(err) {
         response.sendInvalidAuthTokens();
@@ -400,7 +469,14 @@ function handleTripEnded(event, response, uberApi) {
         return uberApi.getTripDetails(lastTripId);
     }).then(function(trip) {
         if (trip.status == 'driver_canceled' || trip.status == 'rider_canceled') {
-            return displayError(response, 'Trip canceled', '');
+            var popup = response.createPopup('Trip canceled');
+            var changeToChooseLocationAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
+
+            popup.setTitle('Alert')
+                .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
+            return response.send();
         }
 
         return Promise.delay(15000).then(function() {
@@ -417,6 +493,15 @@ function handleTripEnded(event, response, uberApi) {
                 response.createTextElementData(3, [Icons.PRICE, receipt.total_charged].join(' ')).setWatchface(Watchfaces.RECEIPT);
                 response.createChangeWatchfaceCommand(Watchfaces.RECEIPT).setAlert();
             });
+        }).catch(UberApi.APIError, function(err) {
+            var popup = response.createPopup('Error retrieving the receipt');
+            var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
+
+            popup.setTitle('Error')
+                .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+                .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+                .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToCoverAction);
+            return Promise.resolve();
         });
     });
 }
@@ -449,8 +534,13 @@ function handleStatusUpdates(event, response, uberApi, status) {
         return data.clearHandler(event, response);
     }).then(function() {
         response.send();
+    }).catch(UberApi.APIError, function(err) {
+        uberInternalServerError(response);
+        response.send();
     }).catch(function(err) {
-        response.sendBadRequestError(err.message);
+        // todo: log this error
+        internalServerError(response);
+        response.send();
     });
 }
 
@@ -530,15 +620,6 @@ function getWatchfaceAndHandlersByStatus(status) {
         clearHandler: clearHandler,
         updatesHandler: updatesHandler
     };
-}
-
-function displayError(response, message, title, alert) {
-    var popup = response.createPopup(message);
-    popup.setTitle(title);
-    var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.COVER);
-    popup.addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction);
-    popup.addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction);
-    popup.addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToCoverAction);
 }
 
 function getLocationName(location) {
