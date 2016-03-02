@@ -31,15 +31,19 @@ UberApi.SurgeEnabledError = function(message) {
 UberApi.SurgeEnabledError.prototype = Object.create(Error.prototype);
 UberApi.SurgeEnabledError.prototype.constructor = UberApi.SurgeEnabledError;
 
+UberApi.InvalidProductError = function(message) {
+    this.message = message;
+    this.name = 'InvalidProductError';
+    Error.captureStackTrace(this, UberApi.InvalidProductError);
+};
+UberApi.InvalidProductError.prototype = Object.create(Error.prototype);
+UberApi.InvalidProductError.prototype.constructor = UberApi.InvalidProductError;
+
 
 UberApi.sandbox = true;
 
-UberApi.prototype.get = function(path, params) {
-    var future = Promise.defer();
-
-    request.get(this.getEndpoint(path, params), {
-        headers: this.getHeaders()
-    }, function(err, res, body) {
+var handleResponse = function(future) {
+    return function(err, res, body) {
         if (err) return future.reject(err);
 
         if (res.statusCode == 429) {
@@ -53,24 +57,31 @@ UberApi.prototype.get = function(path, params) {
             return future.reject(new UberApi.NoDriversError('No drivers available.'));
         }
 
+        if (res.statusCode == 404) {
+            if (body.code == 'not_found') {
+                return future.reject(new UberApi.InvalidProductError('Invalid product selected.'));
+            }
+        }
+
         if (res.statusCode < 200 || res.statusCode >= 300) {
-            try {
-                err = JSON.parse(body);
-            } catch (e) {
-                err = new Error('Cannot GET ' + path);
-            }
-            return future.reject(err);
+            return future.reject(body);
         }
-        try {
-            if (res.statusCode == 204) {
-                future.resolve();
-            } else {
-                future.resolve(JSON.parse(body));
-            }
-        } catch (err) {
-            future.reject(err);
+
+        if (res.statusCode == 204) {
+            future.resolve();
+        } else {
+            future.resolve(body);
         }
-    });
+    };
+};
+
+UberApi.prototype.get = function(path, params) {
+    var future = Promise.defer();
+
+    request.get(this.getEndpoint(path, params), {
+        headers: this.getHeaders(),
+        json: true
+    }, handleResponse(future));
 
     return future.promise.bind(this);
 };
@@ -83,34 +94,7 @@ UberApi.prototype.post = function(path, data) {
         json: true,
         followAllRedirects: true,
         body: data
-    }, function(err, res, body) {
-        if (err) return future.reject(err);
-
-        if (res.statusCode == 429) {
-            return future.reject(new UberApi.RateLimitError('Rate limit reached.'));
-        }
-
-        if (res.statusCode == 409) {
-            if (res.statusMessage == 'surge') {
-                return future.reject(new UberApi.SurgeEnabledError('Surge is enabled.'));
-            }
-            return future.reject(new UberApi.NoDriversError('No drivers available.'));
-        }
-
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-            try {
-                err = JSON.parse(body);
-            } catch (e) {
-                err = new Error('Cannot POST ' + path);
-            }
-            return future.reject(err);
-        }
-        if (res.statusCode == 204) {
-            future.resolve();
-        } else {
-            future.resolve(body);
-        }
-    });
+    }, handleResponse(future));
 
     return future.promise;
 };
@@ -123,34 +107,7 @@ UberApi.prototype.put = function(path, data) {
         json: true,
         followAllRedirects: true,
         body: data
-    }, function(err, res, body) {
-        if (err) return future.reject(err);
-
-        if (res.statusCode == 429) {
-            return future.reject(new UberApi.RateLimitError('Rate limit reached.'));
-        }
-
-        if (res.statusCode == 409) {
-            if (res.statusMessage == 'surge') {
-                return future.reject(new UberApi.SurgeEnabledError('Surge is enabled.'));
-            }
-            return future.reject(new UberApi.NoDriversError('No drivers available.'));
-        }
-
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-            try {
-                err = JSON.parse(body);
-            } catch (e) {
-                err = new Error('Cannot PUT ' + path);
-            }
-            return future.reject(err);
-        }
-        if (res.statusCode == 204) {
-            future.resolve();
-        } else {
-            future.resolve(body);
-        }
-    });
+    }, handleResponse(future));
 
     return future.promise;
 };
@@ -163,34 +120,7 @@ UberApi.prototype.delete = function(path, data) {
         json: true,
         followAllRedirects: true,
         body: data
-    }, function(err, res, body) {
-        if (err) return future.reject(err);
-
-        if (res.statusCode == 429) {
-            return future.reject(new UberApi.RateLimitError('Rate limit reached.'));
-        }
-
-        if (res.statusCode == 409) {
-            if (res.statusMessage == 'surge') {
-                return future.reject(new UberApi.SurgeEnabledError('Surge is enabled.'));
-            }
-            return future.reject(new UberApi.NoDriversError('No drivers available.'));
-        }
-
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-            try {
-                err = JSON.parse(body);
-            } catch (e) {
-                err = new Error('Cannot DELETE ' + path);
-            }
-            return future.reject(err);
-        }
-        if (res.statusCode == 204) {
-            future.resolve();
-        } else {
-            future.resolve(body);
-        }
-    });
+    }, handleResponse(future));
 
     return future.promise;
 };

@@ -110,12 +110,19 @@ var Icons = {
 vectorWatch.on('config', function(event, response) {
     event.getAuthTokensAsync().then(function(authTokens) {
         if (!authTokens) return response.sendInvalidAuthTokens();
-        if (!event.getLocation()) {
-            response.sendBadRequestError('Invalid location.');
-        }
+        //if (!event.getLocation()) {
+        //    response.sendBadRequestError('Invalid location.');
+        //}
 
         var api = new UberApi(authTokens.access_token);
-        api.getProductsForLocation(event.getLocation()).then(function(products) {
+        var productsPromise = null;
+        if (!event.getLocation()) {
+            productsPromise = Promise.resolve({});
+        } else {
+            productsPromise = api.getProductsForLocation(event.getLocation());
+        }
+
+        productsPromise.then(function(products) {
             var productSetting = response.createAutocomplete('Product');
             productSetting.setHint('Select the Uber product you\'d like to use.');
             for (var id in products) {
@@ -223,11 +230,13 @@ vectorWatch.on('call:estimate', function(event, response) {
 
             withPlace = false;
             estimationPromise = uberApi.estimateByLocation(state.Product, location);
-            locationPromise = getLocationName(location).then(function(locationName) { return { address: locationName }; });
+            locationPromise = getLocationName(location).then(function (locationName) {
+                return {address: locationName};
+            });
         }
         var productPromise = uberApi.getProductDetails(state.Product);
 
-        Promise.join(estimationPromise, locationPromise, productPromise).spread(function(estimation, location, product) {
+        Promise.join(estimationPromise, locationPromise, productPromise).spread(function (estimation, location, product) {
             if (estimation.price.surge_multiplier > 1) {
                 displayError(response, 'Surge is enabled');
                 return response.send();
@@ -249,7 +258,10 @@ vectorWatch.on('call:estimate', function(event, response) {
             response.createTextElementData(4, 'Request ' + product.display_name).setWatchface(watchface);
             response.createChangeWatchfaceCommand(watchface);
             return response.send();
-        }).catch(function(err) {
+        }).catch(UberApi.InvalidProductError, function(err) {
+            displayError(response, 'Please enable location and tap on the Uber app in the mobile watch maker');
+            response.send();
+        }).catch(function (err) {
             response.sendBadRequestError(err.message);
         });
     }).catch(function(err) {
@@ -293,6 +305,9 @@ vectorWatch.on('call:requestRide', function(event, response) {
             response.send();
         }).catch(UberApi.SurgeEnabledError, function() {
             displayError(response, 'Surge is enabled');
+            response.send();
+        }).catch(UberApi.InvalidProductError, function(err) {
+            displayError(response, 'Please enable location and tap on the Uber app in the mobile watch maker');
             response.send();
         }).catch(function(err) {
             response.sendBadRequestError(err.message);
@@ -382,22 +397,26 @@ function handleTripEnded(event, response, uberApi) {
             // how did he even got here?
         }
 
-        return [uberApi.getTripDetails(lastTripId), uberApi.getTripReceipt(lastTripId)];
-    }).spread(function(trip, receipt) {
+        return uberApi.getTripDetails(lastTripId);
+    }).then(function(trip) {
         if (trip.status == 'driver_canceled' || trip.status == 'rider_canceled') {
             return displayError(response, 'Trip canceled', '');
         }
 
-        var locationPromise;
-        if (trip.destination) {
-            locationPromise = getLocationName(trip.destination);
-        } else {
-            locationPromise = Promise.resolve('No destination set');
-        }
-        return locationPromise.then(function(locationName) {
-            response.createTextElementData(2, [Icons.PIN, locationName].join(' ')).setWatchface(Watchfaces.RECEIPT)
-            response.createTextElementData(3, [Icons.PRICE, receipt.total_charged].join(' ')).setWatchface(Watchfaces.RECEIPT);
-            response.createChangeWatchfaceCommand(Watchfaces.RECEIPT).setAlert();
+        return Promise.delay(15000).then(function() {
+            return uberApi.getTripReceipt(lastTripId);
+        }).then(function(receipt) {
+            var locationPromise;
+            if (trip.destination) {
+                locationPromise = getLocationName(trip.destination);
+            } else {
+                locationPromise = Promise.resolve('No destination set');
+            }
+            return locationPromise.then(function(locationName) {
+                response.createTextElementData(2, [Icons.PIN, locationName].join(' ')).setWatchface(Watchfaces.RECEIPT)
+                response.createTextElementData(3, [Icons.PRICE, receipt.total_charged].join(' ')).setWatchface(Watchfaces.RECEIPT);
+                response.createChangeWatchfaceCommand(Watchfaces.RECEIPT).setAlert();
+            });
         });
     });
 }
@@ -438,28 +457,35 @@ function handleStatusUpdates(event, response, uberApi, status) {
 var UpdatesHandlers = {
     searching: function() { },
     arriving: function(event, response, trip) {
+        var surge = trip.surge_multiplier;
+        var multiplier = [Math.floor(surge), '.', Math.floor((surge * 10) % 10)].join('');
+
+        var showPlate = !!trip.vehicle.license_plate;
+
         response.createTextElementData(2, [Icons.CLOCK, trip.eta, 'MIN'].join(' ')).setWatchface(Watchfaces.ARRIVING);
-        response.createTextElementData(3, [Icons.MULTIPLIER, trip.surge_multiplier, 'x'].join(' ')).setWatchface(Watchfaces.ARRIVING);
+        response.createTextElementData(3, [Icons.MULTIPLIER, multiplier, 'x'].join(' ')).setWatchface(Watchfaces.ARRIVING);
         response.createTextElementData(4, [trip.vehicle.make, trip.vehicle.model].join(' ')).setWatchface(Watchfaces.ARRIVING);
-        response.createTextElementData(5, [Icons.PROFILE, trip.driver.name].join(' ')).setWatchface(Watchfaces.ARRIVING);
+        response.createTextElementData(showPlate ? 6 : 5, [Icons.PROFILE, trip.driver.name].join(' ')).setWatchface(Watchfaces.ARRIVING);
+        response.createTextElementData(showPlate ? 5 : 6, trip.vehicle.license_place.toUpperCase()).setWatchface(Watchfaces.ARRIVING);
     },
     ready: function(event, response, trip) {
         response.createTextElementData(3, [Icons.PROFILE, trip.driver.name].join(' ')).setWatchface(Watchfaces.READY);
         response.createTextElementData(4, [trip.vehicle.make, trip.vehicle.model].join(' ')).setWatchface(Watchfaces.READY);
-        response.createTextElementData(5, trip.vehicle.license_plate).setWatchface(Watchfaces.READY);
+        response.createTextElementData(5, trip.vehicle.license_plate.toUpperCase()).setWatchface(Watchfaces.READY);
     },
     trip: function(event, response, trip) {
-        var locationPromise;
+        var locationPromise, eta = Icons.CLOCK + ' -';
         if (trip.destination) {
             locationPromise = getLocationName(trip.destination);
+            eta = [Icons.CLOCK, trip.destination.eta, 'MIN'].join(' ');
         } else {
-            locationPromise = Promise.resolve('No destination set');
+            locationPromise = Promise.resolve('Unknown destination');
         }
 
         return locationPromise.then(function (locationName) {
             response.createTextElementData(3, [Icons.PIN, locationName].join(' ')).setWatchface(Watchfaces.TRIP);
             response.createTextElementData(4, [Icons.PROFILE, trip.driver.name].join(' ')).setWatchface(Watchfaces.TRIP);
-            response.createTextElementData(5, [Icons.CLOCK, trip.destination.eta, 'MIN'].join(' ')).setWatchface(Watchfaces.TRIP);
+            response.createTextElementData(5, eta).setWatchface(Watchfaces.TRIP);
         });
     }
 };
