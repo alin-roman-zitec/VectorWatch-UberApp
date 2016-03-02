@@ -309,7 +309,7 @@ vectorWatch.on('call:cancelRideRequest', function(event, response) {
 
         uberApi.getCurrentTrip().then(function(trip) {
             if (!trip) {
-                return;
+                return response.send();
             }
 
             if ('in_progress' == trip.status) {
@@ -507,14 +507,11 @@ function getWatchfaceAndHandlersByStatus(status) {
 }
 
 function displayError(response, message, title, alert) {
-    response.createTextElementData(2, message).setWatchface(Watchfaces.ERROR);
-    if (title != null) {
-        response.createTextElementData(1, title).setWatchface(Watchfaces.ERROR);
-    }
-    var changeWatchfaceCommand = response.createChangeWatchfaceCommand(Watchfaces.ERROR);
-    if (alert) {
-        changeWatchfaceCommand.setAlert();
-    }
+    var popup = response.createPopup(message);
+    var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.COVER);
+    popup.addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction);
+    popup.addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction);
+    popup.addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToCoverAction);
 }
 
 function getLocationName(location) {
