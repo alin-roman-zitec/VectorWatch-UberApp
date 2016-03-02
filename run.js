@@ -210,9 +210,9 @@ vectorWatch.on('call:estimate', function(event, response) {
                 var changeToChooseLocationAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
 
                 popup.setTitle('Alert')
-                    .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                    .addCallback(VectorWatch.Buttons.Up, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
                     .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
-                    .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
+                    .addCallback(VectorWatch.Buttons.Down, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
                 return response.send();
             }
 
@@ -232,9 +232,9 @@ vectorWatch.on('call:estimate', function(event, response) {
 
                 popup.setTitle('Surge pricing')
                     .setLabel('Retry')
-                    .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                    .addCallback(VectorWatch.Buttons.Up, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
                     .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
-                    .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, retryAction);
+                    .addCallback(VectorWatch.Buttons.Down, VectorWatch.ButtonEvents.Press, retryAction);
                 return response.send();
             }
 
@@ -259,9 +259,9 @@ vectorWatch.on('call:estimate', function(event, response) {
             var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.COVER);
 
             popup.setTitle('Error')
-                .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+                .addCallback(VectorWatch.Buttons.Up, VectorWatch.ButtonEvents.Press, changeToCoverAction)
                 .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction)
-                .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToCoverAction);
+                .addCallback(VectorWatch.Buttons.Down, VectorWatch.ButtonEvents.Press, changeToCoverAction);
             response.send();
         }).catch(UberApi.APIError, function(err) {
             uberInternalServerError(response);
@@ -281,9 +281,9 @@ function uberInternalServerError(response) {
     var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.COVER);
 
     popup.setTitle('Error')
-        .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+        .addCallback(VectorWatch.Buttons.Up, VectorWatch.ButtonEvents.Press, changeToCoverAction)
         .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction)
-        .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToCoverAction);
+        .addCallback(VectorWatch.Buttons.Down, VectorWatch.ButtonEvents.Press, changeToCoverAction);
 }
 
 function internalServerError(response) {
@@ -291,9 +291,9 @@ function internalServerError(response) {
     var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.COVER);
 
     popup.setTitle('Error')
-        .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+        .addCallback(VectorWatch.Buttons.Up, VectorWatch.ButtonEvents.Press, changeToCoverAction)
         .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction)
-        .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToCoverAction);
+        .addCallback(VectorWatch.Buttons.Down, VectorWatch.ButtonEvents.Press, changeToCoverAction);
 }
 
 vectorWatch.on('call:requestRide', function(event, response) {
@@ -316,9 +316,9 @@ vectorWatch.on('call:requestRide', function(event, response) {
                 var changeToChooseLocationAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
 
                 popup.setTitle('Alert')
-                    .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                    .addCallback(VectorWatch.Buttons.Up, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
                     .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
-                    .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
+                    .addCallback(VectorWatch.Buttons.Down, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
                 return response.send();
             }
             promise = uberApi.requestRideAtLocation(state.Product, location);
@@ -338,9 +338,9 @@ vectorWatch.on('call:requestRide', function(event, response) {
             var changeToChooseLocationAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
 
             popup.setTitle('Alert')
-                .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                .addCallback(VectorWatch.Buttons.Up, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
                 .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
-                .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
+                .addCallback(VectorWatch.Buttons.Down, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
             response.send();
         }).catch(UberApi.SurgeEnabledError, function() {
             var popup = response.createPopup('Confirmation on the Uber app is required');
@@ -349,18 +349,18 @@ vectorWatch.on('call:requestRide', function(event, response) {
 
             popup.setTitle('Surge pricing')
                 .setLabel('Retry')
-                .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                .addCallback(VectorWatch.Buttons.Up, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
                 .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
-                .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, retryAction);
+                .addCallback(VectorWatch.Buttons.Down, VectorWatch.ButtonEvents.Press, retryAction);
             response.send();
         }).catch(UberApi.InvalidProductError, function(err) {
             var popup = response.createPopup('Please reconfigure or reinstall the app');
             var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.COVER);
 
             popup.setTitle('Error')
-                .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+                .addCallback(VectorWatch.Buttons.Up, VectorWatch.ButtonEvents.Press, changeToCoverAction)
                 .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction)
-                .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToCoverAction);
+                .addCallback(VectorWatch.Buttons.Down, VectorWatch.ButtonEvents.Press, changeToCoverAction);
             response.send();
         }).catch(UberApi.APIError, function(err) {
             uberInternalServerError(response);
@@ -395,9 +395,9 @@ vectorWatch.on('call:cancelRideRequest', function(event, response) {
                 var changeToChooseLocationAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
 
                 popup.setTitle('Alert')
-                    .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                    .addCallback(VectorWatch.Buttons.Up, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
                     .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
-                    .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
+                    .addCallback(VectorWatch.Buttons.Down, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
                 return response.send();
             });
         }).catch(UberApi.APIError, function(err) {
@@ -473,9 +473,9 @@ function handleTripEnded(event, response, uberApi) {
             var changeToChooseLocationAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
 
             popup.setTitle('Alert')
-                .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
+                .addCallback(VectorWatch.Buttons.Up, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
                 .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction)
-                .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
+                .addCallback(VectorWatch.Buttons.Down, VectorWatch.ButtonEvents.Press, changeToChooseLocationAction);
             return response.send();
         }
 
@@ -498,9 +498,9 @@ function handleTripEnded(event, response, uberApi) {
             var changeToCoverAction = popup.createChangeWatchfaceAction(Watchfaces.CHOOSE_LOCATION);
 
             popup.setTitle('Error')
-                .addCallback(VectorWatch.Buttons.Top, VectorWatch.ButtonEvents.Press, changeToCoverAction)
+                .addCallback(VectorWatch.Buttons.Up, VectorWatch.ButtonEvents.Press, changeToCoverAction)
                 .addCallback(VectorWatch.Buttons.Middle, VectorWatch.ButtonEvents.Press, changeToCoverAction)
-                .addCallback(VectorWatch.Buttons.Bottom, VectorWatch.ButtonEvents.Press, changeToCoverAction);
+                .addCallback(VectorWatch.Buttons.Down, VectorWatch.ButtonEvents.Press, changeToCoverAction);
             return Promise.resolve();
         });
     });
